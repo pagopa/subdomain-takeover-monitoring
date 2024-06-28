@@ -1,4 +1,4 @@
-module azure_subdomain
+module subdomain
 
 go 1.22.2
 

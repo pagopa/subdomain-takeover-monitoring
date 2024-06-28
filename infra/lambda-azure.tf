@@ -1,6 +1,9 @@
 resource "null_resource" "azure_function_binary" {
+  triggers = {
+    always_run = "${timestamp()}"
+  }
   provisioner "local-exec" {
-    command = "GOOS=linux GOARCH=amd64 CGO_ENABLED=0 GOFLAGS=-trimpath go build -mod=readonly -ldflags='-s -w' -o ${local.azure_binary_path} ${local.azure_src_path}"
+    command = "GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ${local.azure_binary_path} ${local.azure_src_path}"
   }
 }
 
