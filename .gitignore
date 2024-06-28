@@ -34,3 +34,5 @@ override.tf.json
 terraform.rc
 
 infra/tf_generated_azure
+
+.DS_Store
