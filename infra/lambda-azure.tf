@@ -15,6 +15,17 @@ data "archive_file" "azure_function_archive" {
   output_path = local.azure_archive_path
 }
 
+data "aws_ssm_parameter" "azure_tenant_id" {
+  name = "AZURE_TENANT_ID"
+}
+data "aws_ssm_parameter" "azure_client_id" {
+  name = "AZURE_CLIENT_ID"
+}
+
+data "aws_ssm_parameter" "azure_client_secret" {
+  name = "AZURE_CLIENT_SECRET"
+}
+
 
 module "lambda_azure" {
   source = "git::https://github.com/terraform-aws-modules/terraform-aws-lambda.git?ref=b88a85627c84a4e9d1ad2a655455d10b386bc63f"
@@ -36,7 +47,9 @@ module "lambda_azure" {
 
 
   environment_variables = {
-
+    AZURE_TENANT_ID     = data.aws_ssm_parameter.azure_tenant_id.value,
+    AZURE_CLIENT_ID     = data.aws_ssm_parameter.azure_client_id.value,
+    AZURE_CLIENT_SECRET = data.aws_ssm_parameter.azure_client_secret.value
   }
 
 
