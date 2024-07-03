@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"reflect"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -59,11 +60,23 @@ func DnsToCNAME(allCNAMEs map[string]*armdns.RecordSet, DNSZone armdns.Zone, sub
 			log.Fatalf("failed to advance page: %v", err)
 		}
 		for _, v := range page.Value {
-			x := strings.Trim(*v.Properties.Fqdn, " ")
+			x := strings.TrimSpace(*v.Properties.Fqdn)
 			x = strings.TrimRight(x, ".")
 			allCNAMEs[x] = v
 		}
 	}
+}
+
+func Lookup(resources map[string]struct{}, allCNAMEs map[string]*armdns.RecordSet) []string {
+	var alerts []string
+	for i, v := range allCNAMEs {
+		if _, ok := resources[i]; ok {
+
+		} else {
+			alerts = append(alerts, *v.ID)
+		}
+	}
+	return alerts
 }
 
 func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
@@ -147,6 +160,21 @@ func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
 	if err != nil {
 		log.Fatalf("failed to finish the request: %v", err)
 	}
+	// (?) perche' la documebntazione non corrisponde ?
+	var allResources map[string]struct{}
+	v := reflect.ValueOf(resAllResources.QueryResponse.Data)
+	if v.Kind() == reflect.Slice || v.Kind() == reflect.Array {
+		for i := 0; i < v.Len(); i++ {
+			item := v.Index(i).Interface()
+			if tmp, ok := item.(map[string]string); ok {
+				x := strings.TrimSpace(tmp["dnsEndpoint"])
+				x = strings.TrimRight(x, ".")
+				allResources[x] = struct{}{}
+			}
+		}
+	} else {
+		log.Fatalf("failed to download all the resources")
+	}
 
 	//get all the subscriptions
 	clientFactorySub, err := armsubscriptions.NewClientFactory(cred, nil)
@@ -188,8 +216,15 @@ func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
 	}
 
 	// lookup if cname exist in the org
+	result := Lookup(allResources, allCNAMEs)
+	// report of the subdomain
+	if len(result) > 0 {
+		resultStamp := strings.Join(result, "\n")
+		return resultStamp, nil
+	} else {
+		return "No subdomain", nil
+	}
 
-	return fmt.Sprintf("Hello, %s!", event.Name), nil
 }
 
 func main() {
