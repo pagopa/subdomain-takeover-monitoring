@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"reflect"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -92,90 +91,100 @@ func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
 		log.Fatalf("failed to create client: %v", err)
 	}
 
-	// Query to list alla the organization resources that could be vulnerable to subdomain takeover
-	resAllResources, err := clientFactoryRes.NewClient().Resources(cntx, armresourcegraph.QueryRequest{
+	request := armresourcegraph.QueryRequest{
 		Query: to.Ptr(`
-    resources
-    | where type in ('microsoft.network/frontdoors',
-    'microsoft.storage/storageaccounts',
-    'microsoft.cdn/profiles/endpoints',
-    'microsoft.cdn/profiles/afdendpoints',
-    'microsoft.network/publicipaddresses',
-    'microsoft.network/trafficmanagerprofiles',
-    'microsoft.containerinstance/containergroups',
-    'microsoft.apimanagement/service',
-    'microsoft.web/sites',
-    'microsoft.web/sites/slots',
-    'microsoft.classiccompute/domainnames',    
-    'microsoft.classicstorage/storageaccounts')
-    |mvexpand properties.hostnameConfigurations    
-    | extend dnsEndpoint = case
-    (
-       type =~ 'microsoft.network/frontdoors', properties.cName,
-       type =~ 'microsoft.storage/storageaccounts', iff(properties['primaryEndpoints']['blob'] matches regex '(?i)(http|https)://',
-                parse_url(tostring(properties['primaryEndpoints']['blob'])).Host, tostring(properties['primaryEndpoints']['blob'])),
-       type =~ 'microsoft.cdn/profiles/endpoints', properties.hostName,
-       type =~ 'microsoft.cdn/profiles/afdendpoints', properties.hostName,
-       type =~ 'microsoft.network/publicipaddresses', properties.dnsSettings.fqdn,
-       type =~ 'microsoft.network/trafficmanagerprofiles', properties.dnsConfig.fqdn,
-       type =~ 'microsoft.containerinstance/containergroups', properties.ipAddress.fqdn,
-       type =~ 'microsoft.apimanagement/service', properties_hostnameConfigurations.hostName,
-       type =~ 'microsoft.web/sites', properties.defaultHostName,
-       type =~ 'microsoft.web/sites/slots', properties.defaultHostName,
-       type =~ 'microsoft.classiccompute/domainnames',properties.hostName,
-       ''
-    )
-    | extend dnsEndpoints = case
-    (
-        type =~ 'microsoft.apimanagement/service', 
-           pack_array(dnsEndpoint, 
-            parse_url(tostring(properties.gatewayRegionalUrl)).Host,
-            parse_url(tostring(properties.developerPortalUrl)).Host, 
-            parse_url(tostring(properties.managementApiUrl)).Host,
-            parse_url(tostring(properties.portalUrl)).Host,
-            parse_url(tostring(properties.scmUrl)).Host,
-            parse_url(tostring(properties.gatewayUrl)).Host),
-        type =~ 'microsoft.web/sites', properties.hostNames,
-       	type =~ 'microsoft.web/sites/slots', properties.hostNames,
-        type =~ 'microsoft.classicstorage/storageaccounts', properties.endpoints,
-        pack_array(dnsEndpoint)
-    )
-    | where isnotempty(dnsEndpoint)
-    | extend resourceProvider = case
-    (
-        dnsEndpoint endswith 'azure-api.net', 'azure-api.net',
-        dnsEndpoint endswith 'azurecontainer.io', 'azurecontainer.io',
-        dnsEndpoint endswith 'azureedge.net', 'azureedge.net',
-        dnsEndpoint endswith 'azurefd.net', 'azurefd.net',
-        dnsEndpoint endswith 'azurewebsites.net', 'azurewebsites.net',
-        dnsEndpoint endswith 'blob.core.windows.net', 'blob.core.windows.net', 
-        dnsEndpoint endswith 'cloudapp.azure.com', 'cloudapp.azure.com',
-        dnsEndpoint endswith 'cloudapp.net', 'cloudapp.net',
-        dnsEndpoint endswith 'trafficmanager.net', 'trafficmanager.net',
-        '' 
-    )
-    | project id, tenantId, subscriptionId, type, resourceGroup, name, dnsEndpoint, dnsEndpoints, properties, resourceProvider
-    | order by dnsEndpoint asc, name asc, id asc`),
-	}, nil)
-	if err != nil {
-		log.Fatalf("failed to finish the request: %v", err)
-	}
-	// (?) perche' la documebntazione non corrisponde ?
-	var allResources map[string]struct{}
-	v := reflect.ValueOf(resAllResources.QueryResponse.Data)
-	if v.Kind() == reflect.Slice || v.Kind() == reflect.Array {
-		for i := 0; i < v.Len(); i++ {
-			item := v.Index(i).Interface()
-			if tmp, ok := item.(map[string]string); ok {
-				x := strings.TrimSpace(tmp["dnsEndpoint"])
-				x = strings.TrimRight(x, ".")
-				allResources[x] = struct{}{}
-			}
-		}
-	} else {
-		log.Fatalf("failed to download all the resources")
+resources
+| where type in ('microsoft.network/frontdoors',
+'microsoft.storage/storageaccounts',
+'microsoft.cdn/profiles/endpoints',
+'microsoft.cdn/profiles/afdendpoints',
+'microsoft.network/publicipaddresses',
+'microsoft.network/trafficmanagerprofiles',
+'microsoft.containerinstance/containergroups',
+'microsoft.apimanagement/service',
+'microsoft.web/sites',
+'microsoft.web/sites/slots',
+'microsoft.classiccompute/domainnames',    
+'microsoft.classicstorage/storageaccounts')
+|mvexpand properties.hostnameConfigurations    
+| extend dnsEndpoint = case
+(
+   type =~ 'microsoft.network/frontdoors', properties.cName,
+   type =~ 'microsoft.storage/storageaccounts', iff(properties['primaryEndpoints']['blob'] matches regex '(?i)(http|https)://',
+			parse_url(tostring(properties['primaryEndpoints']['blob'])).Host, tostring(properties['primaryEndpoints']['blob'])),
+   type =~ 'microsoft.cdn/profiles/endpoints', properties.hostName,
+   type =~ 'microsoft.cdn/profiles/afdendpoints', properties.hostName,
+   type =~ 'microsoft.network/publicipaddresses', properties.dnsSettings.fqdn,
+   type =~ 'microsoft.network/trafficmanagerprofiles', properties.dnsConfig.fqdn,
+   type =~ 'microsoft.containerinstance/containergroups', properties.ipAddress.fqdn,
+   type =~ 'microsoft.apimanagement/service', properties_hostnameConfigurations.hostName,
+   type =~ 'microsoft.web/sites', properties.defaultHostName,
+   type =~ 'microsoft.web/sites/slots', properties.defaultHostName,
+   type =~ 'microsoft.classiccompute/domainnames',properties.hostName,
+   ''
+)
+| extend dnsEndpoints = case
+(
+	type =~ 'microsoft.apimanagement/service', 
+	   pack_array(dnsEndpoint, 
+		parse_url(tostring(properties.gatewayRegionalUrl)).Host,
+		parse_url(tostring(properties.developerPortalUrl)).Host, 
+		parse_url(tostring(properties.managementApiUrl)).Host,
+		parse_url(tostring(properties.portalUrl)).Host,
+		parse_url(tostring(properties.scmUrl)).Host,
+		parse_url(tostring(properties.gatewayUrl)).Host),
+	type =~ 'microsoft.web/sites', properties.hostNames,
+	   type =~ 'microsoft.web/sites/slots', properties.hostNames,
+	type =~ 'microsoft.classicstorage/storageaccounts', properties.endpoints,
+	pack_array(dnsEndpoint)
+)
+| where isnotempty(dnsEndpoint)
+| extend resourceProvider = case
+(
+	dnsEndpoint endswith 'azure-api.net', 'azure-api.net',
+	dnsEndpoint endswith 'azurecontainer.io', 'azurecontainer.io',
+	dnsEndpoint endswith 'azureedge.net', 'azureedge.net',
+	dnsEndpoint endswith 'azurefd.net', 'azurefd.net',
+	dnsEndpoint endswith 'azurewebsites.net', 'azurewebsites.net',
+	dnsEndpoint endswith 'blob.core.windows.net', 'blob.core.windows.net', 
+	dnsEndpoint endswith 'cloudapp.azure.com', 'cloudapp.azure.com',
+	dnsEndpoint endswith 'cloudapp.net', 'cloudapp.net',
+	dnsEndpoint endswith 'trafficmanager.net', 'trafficmanager.net',
+	'' 
+)
+| project id, tenantId, subscriptionId, type, resourceGroup, name, dnsEndpoint, dnsEndpoints, properties, resourceProvider
+| order by dnsEndpoint asc, name asc, id asc`),
+		Options: &armresourcegraph.QueryRequestOptions{
+			ResultFormat: to.Ptr(armresourcegraph.ResultFormatObjectArray),
+		},
 	}
 
+	// Query to list alla the organization resources that could be vulnerable to subdomain takeover
+	for {
+		resAllResources, err := clientFactoryRes.NewClient().Resources(cntx, request, nil)
+		if err != nil {
+			log.Fatalf("failed to finish the request: %v", err)
+		}
+
+		//Parsing
+		var allResources = make(map[string]struct{})
+		if m, ok := resAllResources.Data.([]interface{}); ok {
+			for _, r := range m {
+				if items, ok := r.(map[string]interface{}); ok {
+					if x, ok := items["dnsEndpoint"].(string); ok {
+						allResources[x] = struct{}{}
+					}
+				}
+			}
+		}
+		//Paging
+		if resAllResources.QueryResponse.SkipToken == nil || *resAllResources.QueryResponse.SkipToken == "" {
+			break
+		} else {
+			request.Options.SkipToken = resAllResources.QueryResponse.SkipToken
+		}
+
+	}
 	//get all the subscriptions
 	clientFactorySub, err := armsubscriptions.NewClientFactory(cred, nil)
 	if err != nil {
