@@ -11,6 +11,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	fmt.Println("event", event)
 
 	return "Hello world", nil
+
 }
 
 func main() {
