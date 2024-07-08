@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -78,6 +79,39 @@ func Lookup(resources map[string]struct{}, allCNAMEs map[string]*armdns.RecordSe
 	return alerts
 }
 
+func getQuery(nameFile string) string {
+	res, err := os.ReadFile(nameFile)
+	if err != nil {
+		log.Fatalf("failed to read the file: %v", err)
+	}
+	return string(res)
+}
+
+func getAllSubscriptions() []string {
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		log.Fatalf("failed to obtain a credential: %v", err)
+	}
+	cntx := context.Background()
+	clientFactorySub, err := armsubscriptions.NewClientFactory(cred, nil)
+	if err != nil {
+		log.Fatalf("failed to create client: %v", err)
+	}
+
+	var resAllSubscriptions []string
+	pager := clientFactorySub.NewClient().NewListPager(nil)
+	for pager.More() {
+		page, err := pager.NextPage(cntx)
+		if err != nil {
+			log.Fatalf("failed to advance page: %v", err)
+		}
+		for _, v := range page.Value {
+			resAllSubscriptions = append(resAllSubscriptions, *v.ID)
+		}
+	}
+	return resAllSubscriptions
+}
+
 func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
 	//
 	// Authentication with service principal
@@ -91,75 +125,16 @@ func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
 		log.Fatalf("failed to create client: %v", err)
 	}
 
+	// read the query from the file
+	query := getQuery("./query.txt")
+	// Query to list all the organization resources that could be vulnerable to subdomain takeover
 	request := armresourcegraph.QueryRequest{
-		Query: to.Ptr(`
-resources
-| where type in ('microsoft.network/frontdoors',
-'microsoft.storage/storageaccounts',
-'microsoft.cdn/profiles/endpoints',
-'microsoft.cdn/profiles/afdendpoints',
-'microsoft.network/publicipaddresses',
-'microsoft.network/trafficmanagerprofiles',
-'microsoft.containerinstance/containergroups',
-'microsoft.apimanagement/service',
-'microsoft.web/sites',
-'microsoft.web/sites/slots',
-'microsoft.classiccompute/domainnames',    
-'microsoft.classicstorage/storageaccounts')
-|mvexpand properties.hostnameConfigurations    
-| extend dnsEndpoint = case
-(
-   type =~ 'microsoft.network/frontdoors', properties.cName,
-   type =~ 'microsoft.storage/storageaccounts', iff(properties['primaryEndpoints']['blob'] matches regex '(?i)(http|https)://',
-			parse_url(tostring(properties['primaryEndpoints']['blob'])).Host, tostring(properties['primaryEndpoints']['blob'])),
-   type =~ 'microsoft.cdn/profiles/endpoints', properties.hostName,
-   type =~ 'microsoft.cdn/profiles/afdendpoints', properties.hostName,
-   type =~ 'microsoft.network/publicipaddresses', properties.dnsSettings.fqdn,
-   type =~ 'microsoft.network/trafficmanagerprofiles', properties.dnsConfig.fqdn,
-   type =~ 'microsoft.containerinstance/containergroups', properties.ipAddress.fqdn,
-   type =~ 'microsoft.apimanagement/service', properties_hostnameConfigurations.hostName,
-   type =~ 'microsoft.web/sites', properties.defaultHostName,
-   type =~ 'microsoft.web/sites/slots', properties.defaultHostName,
-   type =~ 'microsoft.classiccompute/domainnames',properties.hostName,
-   ''
-)
-| extend dnsEndpoints = case
-(
-	type =~ 'microsoft.apimanagement/service', 
-	   pack_array(dnsEndpoint, 
-		parse_url(tostring(properties.gatewayRegionalUrl)).Host,
-		parse_url(tostring(properties.developerPortalUrl)).Host, 
-		parse_url(tostring(properties.managementApiUrl)).Host,
-		parse_url(tostring(properties.portalUrl)).Host,
-		parse_url(tostring(properties.scmUrl)).Host,
-		parse_url(tostring(properties.gatewayUrl)).Host),
-	type =~ 'microsoft.web/sites', properties.hostNames,
-	   type =~ 'microsoft.web/sites/slots', properties.hostNames,
-	type =~ 'microsoft.classicstorage/storageaccounts', properties.endpoints,
-	pack_array(dnsEndpoint)
-)
-| where isnotempty(dnsEndpoint)
-| extend resourceProvider = case
-(
-	dnsEndpoint endswith 'azure-api.net', 'azure-api.net',
-	dnsEndpoint endswith 'azurecontainer.io', 'azurecontainer.io',
-	dnsEndpoint endswith 'azureedge.net', 'azureedge.net',
-	dnsEndpoint endswith 'azurefd.net', 'azurefd.net',
-	dnsEndpoint endswith 'azurewebsites.net', 'azurewebsites.net',
-	dnsEndpoint endswith 'blob.core.windows.net', 'blob.core.windows.net', 
-	dnsEndpoint endswith 'cloudapp.azure.com', 'cloudapp.azure.com',
-	dnsEndpoint endswith 'cloudapp.net', 'cloudapp.net',
-	dnsEndpoint endswith 'trafficmanager.net', 'trafficmanager.net',
-	'' 
-)
-| project id, tenantId, subscriptionId, type, resourceGroup, name, dnsEndpoint, dnsEndpoints, properties, resourceProvider
-| order by dnsEndpoint asc, name asc, id asc`),
+		Query: to.Ptr(query),
 		Options: &armresourcegraph.QueryRequestOptions{
 			ResultFormat: to.Ptr(armresourcegraph.ResultFormatObjectArray),
 		},
 	}
-
-	// Query to list alla the organization resources that could be vulnerable to subdomain takeover
+	var allResources = make(map[string]struct{})
 	for {
 		resAllResources, err := clientFactoryRes.NewClient().Resources(cntx, request, nil)
 		if err != nil {
@@ -167,7 +142,6 @@ resources
 		}
 
 		//Parsing
-		var allResources = make(map[string]struct{})
 		if m, ok := resAllResources.Data.([]interface{}); ok {
 			for _, r := range m {
 				if items, ok := r.(map[string]interface{}); ok {
@@ -183,26 +157,10 @@ resources
 		} else {
 			request.Options.SkipToken = resAllResources.QueryResponse.SkipToken
 		}
-
 	}
 	//get all the subscriptions
-	clientFactorySub, err := armsubscriptions.NewClientFactory(cred, nil)
-	if err != nil {
-		log.Fatalf("failed to create client: %v", err)
-	}
+	resAllSubscriptions := getAllSubscriptions()
 	var allCNAMEs = make(map[string]*armdns.RecordSet)
-	var resAllSubscriptions []string
-	pager := clientFactorySub.NewClient().NewListPager(nil)
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			log.Fatalf("failed to advance page: %v", err)
-		}
-		for _, v := range page.Value {
-			resAllSubscriptions = append(resAllSubscriptions, *v.ID)
-		}
-	}
-
 	//for each subscription
 	for _, x := range resAllSubscriptions {
 		clientFactory, err := armdns.NewClientFactory(x, cred, nil)
