@@ -1,4 +1,4 @@
-package azure
+package main
 
 import (
 	"context"
@@ -106,7 +106,7 @@ func getAllSubscriptions() []string {
 			log.Fatalf("failed to advance page: %v", err)
 		}
 		for _, v := range page.Value {
-			resAllSubscriptions = append(resAllSubscriptions, *v.ID)
+			resAllSubscriptions = append(resAllSubscriptions, *v.SubscriptionID)
 		}
 	}
 	return resAllSubscriptions

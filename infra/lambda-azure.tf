@@ -3,7 +3,7 @@ resource "null_resource" "azure_function_binary" {
     always_run = "${timestamp()}"
   }
   provisioner "local-exec" {
-    command = "GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ${local.azure_binary_path} ${local.azure_src_path}"
+    command = "GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ${local.azure_binary_path} ${local.azure_src_path}&& cp ${local.query_src_path} ${local.query_binary_path} "
   }
 }
 
@@ -11,7 +11,7 @@ resource "null_resource" "azure_function_binary" {
 data "archive_file" "azure_function_archive" {
   depends_on  = [null_resource.azure_function_binary]
   type        = "zip"
-  source_file = local.azure_binary_path
+  source_dir = local.azure_dir_path
   output_path = local.azure_archive_path
 }
 
