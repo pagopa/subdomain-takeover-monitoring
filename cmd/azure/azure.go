@@ -60,20 +60,22 @@ func DnsToCNAME(allCNAMEs map[string]*armdns.RecordSet, DNSZone armdns.Zone, sub
 			log.Fatalf("failed to advance page: %v", err)
 		}
 		for _, v := range page.Value {
-			x := strings.TrimSpace(*v.Properties.Fqdn)
-			x = strings.TrimRight(x, ".")
-			allCNAMEs[x] = v
+			if v.Properties != nil && v.Properties.CnameRecord != nil && v.Properties.CnameRecord.Cname != nil {
+				x := strings.TrimSpace(*v.Properties.CnameRecord.Cname)
+				x = strings.TrimRight(x, ".")
+				allCNAMEs[x] = v
+			}
 		}
 	}
 }
 
 func Lookup(resources map[string]struct{}, allCNAMEs map[string]*armdns.RecordSet) []string {
 	var alerts []string
-	for i, v := range allCNAMEs {
+	for i, _ := range allCNAMEs {
 		if _, ok := resources[i]; ok {
 
 		} else {
-			alerts = append(alerts, *v.ID)
+			alerts = append(alerts, i)
 		}
 	}
 	return alerts
@@ -186,7 +188,7 @@ func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
 	result := Lookup(allResources, allCNAMEs)
 	// report of the subdomain
 	if len(result) > 0 {
-		resultStamp := strings.Join(result, "\n")
+		resultStamp := strings.Join(result, "|")
 		return resultStamp, nil
 	} else {
 		return "No subdomain", nil

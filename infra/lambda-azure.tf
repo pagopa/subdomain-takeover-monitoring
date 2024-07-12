@@ -11,7 +11,7 @@ resource "null_resource" "azure_function_binary" {
 data "archive_file" "azure_function_archive" {
   depends_on  = [null_resource.azure_function_binary]
   type        = "zip"
-  source_dir = local.azure_dir_path
+  source_dir  = local.azure_dir_path
   output_path = local.azure_archive_path
 }
 
@@ -54,7 +54,7 @@ module "lambda_azure" {
 
 
   memory_size = 128
-  timeout     = 30
+  timeout     = 900
 
   logging_log_group                 = "/aws/lambda/azure-lambda"
   cloudwatch_logs_retention_in_days = 7
