@@ -1,6 +1,6 @@
 resource "null_resource" "azure_function_binary" {
   triggers = {
-    always_run = "${timestamp()}"
+    build_trigger = "${md5(file(local.azure_src_path))}"
   }
   provisioner "local-exec" {
     command = "GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ${local.azure_binary_path} ${local.azure_src_path}&& cp ${local.query_src_path} ${local.query_binary_path} "

@@ -36,6 +36,27 @@ func getResourceGroupFromID(resourceID string) (string, error) {
 	return "", fmt.Errorf("resource group key not found in resource ID")
 }
 
+func containsAzureVulnerableResources(x string) bool {
+	azureDomains := []string{
+		"azure-api.net",
+		"azurecontainer.io",
+		"azurefd.net",
+		"azureedge.net",
+		"azurewebsites.net",
+		"blob.core.windows.net",
+		"cloudapp.azure.com",
+		"cloudapp.net",
+		"trafficmanager.net",
+	}
+
+	for _, domain := range azureDomains {
+		if strings.Contains(x, domain) {
+			return true
+		}
+	}
+	return false
+}
+
 func DnsToCNAME(allCNAMEs map[string]*armdns.RecordSet, DNSZone armdns.Zone, subscriptionID string) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
@@ -60,10 +81,18 @@ func DnsToCNAME(allCNAMEs map[string]*armdns.RecordSet, DNSZone armdns.Zone, sub
 			log.Fatalf("failed to advance page: %v", err)
 		}
 		for _, v := range page.Value {
-			if v.Properties != nil && v.Properties.CnameRecord != nil && v.Properties.CnameRecord.Cname != nil {
+			if v.Properties != nil && v.Properties.CnameRecord != nil && v.Properties.CnameRecord.Cname != nil && v.Properties.Fqdn != nil {
 				x := strings.TrimSpace(*v.Properties.CnameRecord.Cname)
 				x = strings.TrimRight(x, ".")
-				allCNAMEs[x] = v
+				if containsAzureVulnerableResources(x) {
+					if strings.Contains(x, "azureedge.net") {
+						splits := strings.Split(x, ".")
+						if len(splits) >= 4 {
+							x = strings.Join(splits[len(splits)-3:len(splits)], ".")
+						}
+					}
+					allCNAMEs[x] = v
+				}
 			}
 		}
 	}
@@ -71,11 +100,10 @@ func DnsToCNAME(allCNAMEs map[string]*armdns.RecordSet, DNSZone armdns.Zone, sub
 
 func Lookup(resources map[string]struct{}, allCNAMEs map[string]*armdns.RecordSet) []string {
 	var alerts []string
-	for i, _ := range allCNAMEs {
+	for i, v := range allCNAMEs {
 		if _, ok := resources[i]; ok {
-
 		} else {
-			alerts = append(alerts, i)
+			alerts = append(alerts, strings.Join([]string{*v.Properties.Fqdn, i}, "->"))
 		}
 	}
 	return alerts
