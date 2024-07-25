@@ -57,7 +57,8 @@ func containsAzureVulnerableResources(x string) bool {
 	return false
 }
 
-func DnsToCNAME(allCNAMEs map[string]*armdns.RecordSet, DNSZone armdns.Zone, subscriptionID string) {
+func DnsToCNAME(resources map[string]struct{}, DNSZone armdns.Zone, subscriptionID string) []string {
+	var alerts []string
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		log.Fatalf("failed to obtain a credential: %v", err)
@@ -91,22 +92,24 @@ func DnsToCNAME(allCNAMEs map[string]*armdns.RecordSet, DNSZone armdns.Zone, sub
 							x = strings.Join(splits[len(splits)-3:len(splits)], ".")
 						}
 					}
-					allCNAMEs[x] = v
+					if Lookup(resources, x) {
+						alerts = append(alerts, strings.Join([]string{*v.Properties.Fqdn, x}, "->"))
+					}
+
 				}
 			}
 		}
 	}
+	return alerts
 }
 
-func Lookup(resources map[string]struct{}, allCNAMEs map[string]*armdns.RecordSet) []string {
-	var alerts []string
-	for i, v := range allCNAMEs {
-		if _, ok := resources[i]; ok {
-		} else {
-			alerts = append(alerts, strings.Join([]string{*v.Properties.Fqdn, i}, "->"))
-		}
+func Lookup(resources map[string]struct{}, cname string) bool {
+	if _, ok := resources[cname]; ok {
+		return false
+	} else {
+		return true
 	}
-	return alerts
+
 }
 
 func getQuery(nameFile string) string {
@@ -190,7 +193,7 @@ func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
 	}
 	//get all the subscriptions
 	resAllSubscriptions := getAllSubscriptions()
-	var allCNAMEs = make(map[string]*armdns.RecordSet)
+	var result []string
 	//for each subscription
 	for _, x := range resAllSubscriptions {
 		clientFactory, err := armdns.NewClientFactory(x, cred, nil)
@@ -207,13 +210,11 @@ func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
 			}
 			for _, v := range page.Value {
 
-				DnsToCNAME(allCNAMEs, *v, x)
+				result = append(result, DnsToCNAME(allResources, *v, x)...)
 			}
 		}
 	}
 
-	// lookup if cname exist in the org
-	result := Lookup(allResources, allCNAMEs)
 	// report of the subdomain
 	if len(result) > 0 {
 		resultStamp := strings.Join(result, "|")

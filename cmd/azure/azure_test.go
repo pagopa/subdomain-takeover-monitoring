@@ -3,8 +3,6 @@ package main
 import (
 	"strings"
 	"testing"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns"
 )
 
 // Test per la funzione getResourceGroupFromID
@@ -36,71 +34,37 @@ func TestGetResourceGroupFromID(t *testing.T) {
 
 // Test per la funzione Lookup
 func TestLookup(t *testing.T) {
-	type args struct {
-		resources map[string]struct{}
-		allCNAMEs map[string]*armdns.RecordSet
-	}
 	tests := []struct {
-		name string
-		args args
-		want []string
+		name      string
+		resources map[string]struct{}
+		cname     string
+		expected  bool
 	}{
 		{
-			name: "Test with no unmatched CNAMEs",
-			args: args{
-				resources: map[string]struct{}{
-					"example.com": {},
-				},
-				allCNAMEs: map[string]*armdns.RecordSet{
-					"example.com": {ID: stringPtr("/subscriptions/123/resourceGroups/group1/providers/Microsoft.Network/dnszones/example.com/CNAME/example.com")},
-				},
-			},
-			want: []string{},
+			name:      "existing cname",
+			resources: map[string]struct{}{"example.com": {}, "test.com": {}},
+			cname:     "example.com",
+			expected:  false,
 		},
 		{
-			name: "Test with one unmatched CNAME",
-			args: args{
-				resources: map[string]struct{}{
-					"example.com": {},
-				},
-				allCNAMEs: map[string]*armdns.RecordSet{
-					"example.com":   {ID: stringPtr("/subscriptions/123/resourceGroups/group1/providers/Microsoft.Network/dnszones/example.com/CNAME/example.com")},
-					"unmatched.com": {ID: stringPtr("/subscriptions/123/resourceGroups/group1/providers/Microsoft.Network/dnszones/unmatched.com/CNAME/unmatched.com")},
-				},
-			},
-			want: []string{"/subscriptions/123/resourceGroups/group1/providers/Microsoft.Network/dnszones/unmatched.com/CNAME/unmatched.com"},
+			name:      "non-existing cname",
+			resources: map[string]struct{}{"example.com": {}, "test.com": {}},
+			cname:     "notfound.com",
+			expected:  true,
 		},
 		{
-			name: "Test with multiple unmatched CNAMEs",
-			args: args{
-				resources: map[string]struct{}{
-					"example.com": {},
-				},
-				allCNAMEs: map[string]*armdns.RecordSet{
-					"example.com":    {ID: stringPtr("/subscriptions/123/resourceGroups/group1/providers/Microsoft.Network/dnszones/example.com/CNAME/example.com")},
-					"unmatched1.com": {ID: stringPtr("/subscriptions/123/resourceGroups/group1/providers/Microsoft.Network/dnszones/unmatched1.com/CNAME/unmatched1.com")},
-					"unmatched2.com": {ID: stringPtr("/subscriptions/123/resourceGroups/group1/providers/Microsoft.Network/dnszones/unmatched2.com/CNAME/unmatched2.com")},
-				},
-			},
-			want: []string{
-				"/subscriptions/123/resourceGroups/group1/providers/Microsoft.Network/dnszones/unmatched1.com/CNAME/unmatched1.com",
-				"/subscriptions/123/resourceGroups/group1/providers/Microsoft.Network/dnszones/unmatched2.com/CNAME/unmatched2.com",
-			},
-		},
-		{
-			name: "Test with no CNAMEs",
-			args: args{
-				resources: map[string]struct{}{},
-				allCNAMEs: map[string]*armdns.RecordSet{},
-			},
-			want: []string{},
+			name:      "empty resources",
+			resources: map[string]struct{}{},
+			cname:     "example.com",
+			expected:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Lookup(tt.args.resources, tt.args.allCNAMEs); !equal(got, tt.want) {
-				t.Errorf("Lookup() = %v, want %v", got, tt.want)
+			result := Lookup(tt.resources, tt.cname)
+			if result != tt.expected {
+				t.Errorf("Lookup(%v, %s) = %v; expected %v", tt.resources, tt.cname, result, tt.expected)
 			}
 		})
 	}
