@@ -25,7 +25,12 @@ data "aws_ssm_parameter" "azure_client_id" {
 data "aws_ssm_parameter" "azure_client_secret" {
   name = "AZURE_CLIENT_SECRET"
 }
-
+data "aws_ssm_parameter" "slack_token" {
+  name = "SLACK_TOKEN"
+}
+data "aws_ssm_parameter" "channel_id" {
+  name = "CHANNEL_ID"
+}
 
 module "lambda_azure" {
   source = "git::https://github.com/terraform-aws-modules/terraform-aws-lambda.git?ref=b88a85627c84a4e9d1ad2a655455d10b386bc63f"
@@ -47,6 +52,8 @@ module "lambda_azure" {
 
 
   environment_variables = {
+    SLACK_TOKEN         = data.aws_ssm_parameter.slack_token.value,
+    CHANNEL_ID          = data.aws_ssm_parameter.channel_id.value,
     AZURE_TENANT_ID     = data.aws_ssm_parameter.azure_tenant_id.value,
     AZURE_CLIENT_ID     = data.aws_ssm_parameter.azure_client_id.value,
     AZURE_CLIENT_SECRET = data.aws_ssm_parameter.azure_client_secret.value
@@ -59,13 +66,28 @@ module "lambda_azure" {
   logging_log_group                 = "/aws/lambda/azure-lambda"
   cloudwatch_logs_retention_in_days = 7
 
+
+  allowed_triggers = {
+    ScheduleRule = {
+      principal  = "events.amazonaws.com"
+      source_arn = aws_cloudwatch_event_rule.schedule_azure.arn
+    }
+  }
+
 }
 
 
+resource "aws_cloudwatch_event_rule" "schedule_azure" {
+  name                = "Monday-schedule"
+  description         = "Schedule a run for every monday"
+  schedule_expression = "cron(0 9 ? * MON *)"
 
+}
 
-
-
+resource "aws_cloudwatch_event_target" "schedule_lambda_function" {
+  rule = aws_cloudwatch_event_rule.schedule_azure.name
+  arn  = module.lambda_azure.lambda_function_arn
+}
 
 
 

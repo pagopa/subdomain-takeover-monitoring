@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/slack-go/slack"
 )
 
 type MyEvent struct {
@@ -89,7 +90,7 @@ func DnsToCNAME(resources map[string]struct{}, DNSZone armdns.Zone, subscription
 					if strings.Contains(x, "azureedge.net") {
 						splits := strings.Split(x, ".")
 						if len(splits) >= 4 {
-							x = strings.Join(splits[len(splits)-3:len(splits)], ".")
+							x = strings.Join(splits[len(splits)-3:], ".")
 						}
 					}
 					if Lookup(resources, x) {
@@ -143,6 +144,31 @@ func getAllSubscriptions() []string {
 		}
 	}
 	return resAllSubscriptions
+}
+
+func notify(res []string) {
+	initialText := "🚨🧐 One or more resources potentially susceptible to subdomain takeover have been identified 🧐🚨"
+	tokenSlack := os.Getenv("SLACK_TOKEN")
+	channelId := os.Getenv("CHANNEL_ID")
+	api := slack.New(tokenSlack)
+
+	// Formatting in MD
+	var listItems []string
+	for _, item := range res {
+		listItems = append(listItems, "• "+item)
+	}
+	listText := strings.Join(listItems, "\n")
+
+	attachments := []slack.Attachment{
+		{
+			Text: listText,
+		},
+	}
+
+	_, _, err := api.PostMessage(channelId, slack.MsgOptionText(initialText, true), slack.MsgOptionAttachments(attachments...))
+	if err != nil {
+		log.Fatalf("slack errror: %v", err)
+	}
 }
 
 func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
@@ -215,8 +241,9 @@ func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
 		}
 	}
 
-	// report of the subdomain
+	// report of the subdomains
 	if len(result) > 0 {
+		notify(result)
 		resultStamp := strings.Join(result, "|")
 		return resultStamp, nil
 	} else {
