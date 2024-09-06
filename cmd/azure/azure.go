@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -16,29 +15,32 @@ import (
 	"github.com/slack-go/slack"
 )
 
-type MyEvent struct {
+const (
+	badNotificationText  = "🚨🧐 Potentially vulnerable resources susceptible to subdomain takeover detected 🧐🚨"
+	goodNotificationText = "🙌🚀 Everything good, well done 🙌🚀"
+)
+
+type Event struct {
 	Name string `json:"name"`
 }
 
-func getResourceGroupFromID(resourceID string) (string, error) {
+func getResourceGroupFromResourceID(resourceID string) (string, error) {
 	const resourceGroupsKey = "resourceGroups"
+	resourceComponents := strings.Split(resourceID, "/")
 
-	components := strings.Split(resourceID, "/")
-
-	for i := range components {
-		if strings.EqualFold(components[i], resourceGroupsKey) {
-			if i+1 < len(components) {
-				return components[i+1], nil
+	for i := range resourceComponents {
+		if strings.EqualFold(resourceComponents[i], resourceGroupsKey) {
+			if i+1 < len(resourceComponents) {
+				return resourceComponents[i+1], nil
 			}
 			return "", fmt.Errorf("resource group not found in resource ID")
 		}
 	}
-
 	return "", fmt.Errorf("resource group key not found in resource ID")
 }
 
-func containsAzureVulnerableResources(x string) bool {
-	azureDomains := []string{
+func containsAzureVulnerableResources(resource string) bool {
+	azureVulnerableDomains := []string{
 		"azure-api.net",
 		"azurecontainer.io",
 		"azurefd.net",
@@ -50,206 +52,200 @@ func containsAzureVulnerableResources(x string) bool {
 		"trafficmanager.net",
 	}
 
-	for _, domain := range azureDomains {
-		if strings.Contains(x, domain) {
+	for _, domain := range azureVulnerableDomains {
+		if strings.Contains(resource, domain) {
 			return true
 		}
 	}
 	return false
 }
 
-func DnsToCNAME(resources map[string]struct{}, DNSZone armdns.Zone, subscriptionID string) []string {
-	var alerts []string
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
+func getDnsCNAMERecords(resources map[string]struct{}, dnsZone armdns.Zone, subscriptionID string) ([]string, error) {
+	var vulnerableResources []string
+	credential, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		log.Fatalf("failed to obtain a credential: %v", err)
+		return nil, fmt.Errorf("failed to obtain a credential: %v", err)
 	}
-	ctx := context.Background()
-	clientFactory, err := armdns.NewClientFactory(subscriptionID, cred, nil)
+	cntx := context.Background()
+	clientFactory, err := armdns.NewClientFactory(subscriptionID, credential, nil)
 	if err != nil {
-		log.Fatalf("failed to create client: %v", err)
+		return nil, fmt.Errorf("failed to create client: %v", err)
 	}
-	rg, err := getResourceGroupFromID(*DNSZone.ID)
+	resourceGroup, err := getResourceGroupFromResourceID(*dnsZone.ID)
 	if err != nil {
-		log.Fatalf("failed to get RG: %v", err)
+		return nil, fmt.Errorf("failed to get resource group: %v", err)
 	}
-	// get the cname records
-	pager := clientFactory.NewRecordSetsClient().NewListByTypePager(rg, *DNSZone.Name, armdns.RecordTypeCNAME, &armdns.RecordSetsClientListByTypeOptions{Top: nil,
-		Recordsetnamesuffix: nil,
-	})
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
+
+	recordSetPager := clientFactory.NewRecordSetsClient().NewListByTypePager(resourceGroup, *dnsZone.Name, armdns.RecordTypeCNAME, &armdns.RecordSetsClientListByTypeOptions{})
+	for recordSetPager.More() {
+		page, err := recordSetPager.NextPage(cntx)
 		if err != nil {
-			log.Fatalf("failed to advance page: %v", err)
+			return nil, fmt.Errorf("failed to advance page: %v", err)
 		}
-		for _, v := range page.Value {
-			if v.Properties != nil && v.Properties.CnameRecord != nil && v.Properties.CnameRecord.Cname != nil && v.Properties.Fqdn != nil {
-				x := strings.TrimSpace(*v.Properties.CnameRecord.Cname)
-				x = strings.TrimRight(x, ".")
-				if containsAzureVulnerableResources(x) {
-					if strings.Contains(x, "azureedge.net") {
-						splits := strings.Split(x, ".")
+		for _, record := range page.Value {
+			if record.Properties != nil && record.Properties.CnameRecord != nil && record.Properties.CnameRecord.Cname != nil && record.Properties.Fqdn != nil {
+				cname := strings.TrimSpace(*record.Properties.CnameRecord.Cname)
+				cname = strings.TrimRight(cname, ".")
+				if containsAzureVulnerableResources(cname) {
+					if strings.Contains(cname, "azureedge.net") {
+						splits := strings.Split(cname, ".")
 						if len(splits) >= 4 {
-							x = strings.Join(splits[len(splits)-3:], ".")
+							cname = strings.Join(splits[len(splits)-3:], ".")
 						}
 					}
-					if Lookup(resources, x) {
-						alerts = append(alerts, strings.Join([]string{*v.Properties.Fqdn, x}, "->"))
+					if isVulnerableResource(resources, cname) {
+						vulnerableResources = append(vulnerableResources, strings.Join([]string{*record.Properties.Fqdn, cname}, " -> "))
 					}
-
 				}
 			}
 		}
 	}
-	return alerts
+	return vulnerableResources, nil
 }
 
-func Lookup(resources map[string]struct{}, cname string) bool {
-	if _, ok := resources[cname]; ok {
-		return false
-	} else {
-		return true
-	}
-
+func isVulnerableResource(resources map[string]struct{}, cname string) bool {
+	_, exists := resources[cname]
+	return !exists
 }
 
-func getQuery(nameFile string) string {
-	res, err := os.ReadFile(nameFile)
+func readQueryFile(filePath string) (string, error) {
+	queryData, err := os.ReadFile(filePath)
 	if err != nil {
-		log.Fatalf("failed to read the file: %v", err)
+		return "", fmt.Errorf("failed to read the file: %v", err)
 	}
-	return string(res)
+	return string(queryData), nil
 }
 
-func getAllSubscriptions() []string {
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
+func getAllAzureSubscriptions() ([]string, error) {
+	credential, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		log.Fatalf("failed to obtain a credential: %v", err)
+		return nil, fmt.Errorf("failed to obtain a credential: %v", err)
 	}
 	cntx := context.Background()
-	clientFactorySub, err := armsubscriptions.NewClientFactory(cred, nil)
+	clientFactory, err := armsubscriptions.NewClientFactory(credential, nil)
 	if err != nil {
-		log.Fatalf("failed to create client: %v", err)
+		return nil, fmt.Errorf("failed to create client: %v", err)
 	}
 
-	var resAllSubscriptions []string
-	pager := clientFactorySub.NewClient().NewListPager(nil)
+	var subscriptionIDs []string
+	pager := clientFactory.NewClient().NewListPager(nil)
 	for pager.More() {
 		page, err := pager.NextPage(cntx)
 		if err != nil {
-			log.Fatalf("failed to advance page: %v", err)
+			return nil, fmt.Errorf("failed to advance page: %v", err)
 		}
-		for _, v := range page.Value {
-			resAllSubscriptions = append(resAllSubscriptions, *v.SubscriptionID)
+		for _, subscription := range page.Value {
+			subscriptionIDs = append(subscriptionIDs, *subscription.SubscriptionID)
 		}
 	}
-	return resAllSubscriptions
+	return subscriptionIDs, nil
 }
 
-func notify(res []string) {
-	initialText := "🚨🧐 One or more resources potentially susceptible to subdomain takeover have been identified 🧐🚨"
-	tokenSlack := os.Getenv("SLACK_TOKEN")
-	channelId := os.Getenv("CHANNEL_ID")
-	api := slack.New(tokenSlack)
+func sendSlackNotification(vulnerableResources []string) error {
+	slackToken := os.Getenv("SLACK_TOKEN")
+	slackChannelID := os.Getenv("CHANNEL_ID")
+	slackClient := slack.New(slackToken)
 
-	// Formatting in MD
-	var listItems []string
-	for _, item := range res {
-		listItems = append(listItems, "• "+item)
-	}
-	listText := strings.Join(listItems, "\n")
+	if len(vulnerableResources) > 0 {
+		var formattedResources []string
+		for _, resource := range vulnerableResources {
+			formattedResources = append(formattedResources, "• "+resource)
+		}
+		resourceListText := strings.Join(formattedResources, "\n")
 
-	attachments := []slack.Attachment{
-		{
-			Text: listText,
-		},
-	}
+		attachments := []slack.Attachment{
+			{
+				Text: resourceListText,
+			},
+		}
 
-	_, _, err := api.PostMessage(channelId, slack.MsgOptionText(initialText, true), slack.MsgOptionAttachments(attachments...))
-	if err != nil {
-		log.Fatalf("slack errror: %v", err)
+		_, _, err := slackClient.PostMessage(slackChannelID, slack.MsgOptionText(badNotificationText, true), slack.MsgOptionAttachments(attachments...))
+		if err != nil {
+			return fmt.Errorf("slack notification failed: %v", err)
+		}
+	} else {
+		_, _, err := slackClient.PostMessage(slackChannelID, slack.MsgOptionText(goodNotificationText, true), slack.MsgOptionAttachments())
+		if err != nil {
+			return fmt.Errorf("slack notification failed: %v", err)
+		}
 	}
+	return nil
 }
 
-func HandleRequest(ctx context.Context, event MyEvent) (string, error) {
-	//
-	// Authentication with service principal
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
+func HandleRequest(ctx context.Context, event Event) (string, error) {
+	credential, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		log.Fatalf("failed to obtain a credential: %v", err)
+		return "", fmt.Errorf("failed to obtain a credential: %v", err)
 	}
 	cntx := context.Background()
-	clientFactoryRes, err := armresourcegraph.NewClientFactory(cred, nil)
+	resourceGraphClientFactory, err := armresourcegraph.NewClientFactory(credential, nil)
 	if err != nil {
-		log.Fatalf("failed to create client: %v", err)
+		return "", fmt.Errorf("failed to create resource graph client: %v", err)
 	}
 
-	// read the query from the file
-	query := getQuery("./query.txt")
-	// Query to list all the organization resources that could be vulnerable to subdomain takeover
-	request := armresourcegraph.QueryRequest{
+	query, err := readQueryFile("./query")
+	if err != nil {
+		return "", err
+	}
+	resourceQueryRequest := armresourcegraph.QueryRequest{
 		Query: to.Ptr(query),
 		Options: &armresourcegraph.QueryRequestOptions{
 			ResultFormat: to.Ptr(armresourcegraph.ResultFormatObjectArray),
 		},
 	}
-	var allResources = make(map[string]struct{})
+	allVulnerableResources := make(map[string]struct{})
 	for {
-		resAllResources, err := clientFactoryRes.NewClient().Resources(cntx, request, nil)
+		resourceQueryResult, err := resourceGraphClientFactory.NewClient().Resources(cntx, resourceQueryRequest, nil)
 		if err != nil {
-			log.Fatalf("failed to finish the request: %v", err)
+			return "", fmt.Errorf("resource query failed: %v", err)
 		}
 
-		//Parsing
-		if m, ok := resAllResources.Data.([]interface{}); ok {
-			for _, r := range m {
-				if items, ok := r.(map[string]interface{}); ok {
-					if x, ok := items["dnsEndpoint"].(string); ok {
-						allResources[x] = struct{}{}
+		if resourceItems, ok := resourceQueryResult.Data.([]interface{}); ok {
+			for _, resourceItem := range resourceItems {
+				if resourceMap, ok := resourceItem.(map[string]interface{}); ok {
+					if dnsEndpoint, ok := resourceMap["dnsEndpoint"].(string); ok {
+						allVulnerableResources[dnsEndpoint] = struct{}{}
 					}
 				}
 			}
 		}
-		//Paging
-		if resAllResources.QueryResponse.SkipToken == nil || *resAllResources.QueryResponse.SkipToken == "" {
+
+		if resourceQueryResult.QueryResponse.SkipToken == nil || *resourceQueryResult.QueryResponse.SkipToken == "" {
 			break
 		} else {
-			request.Options.SkipToken = resAllResources.QueryResponse.SkipToken
+			resourceQueryRequest.Options.SkipToken = resourceQueryResult.QueryResponse.SkipToken
 		}
 	}
-	//get all the subscriptions
-	resAllSubscriptions := getAllSubscriptions()
-	var result []string
-	//for each subscription
-	for _, x := range resAllSubscriptions {
-		clientFactory, err := armdns.NewClientFactory(x, cred, nil)
+
+	subscriptionIDs, err := getAllAzureSubscriptions()
+	if err != nil {
+		return "", err
+	}
+	var detectedVulnerabilities []string
+	for _, subscriptionID := range subscriptionIDs {
+		clientFactory, err := armdns.NewClientFactory(subscriptionID, credential, nil)
 		if err != nil {
-			log.Fatalf("failed to create client: %v", err)
+			return "", fmt.Errorf("failed to create DNS client: %v", err)
 		}
 
-		//get all the dnszone
-		pager := clientFactory.NewZonesClient().NewListPager(&armdns.ZonesClientListOptions{Top: nil})
-		for pager.More() {
-			page, err := pager.NextPage(ctx)
+		dnsZonesPager := clientFactory.NewZonesClient().NewListPager(&armdns.ZonesClientListOptions{})
+		for dnsZonesPager.More() {
+			page, err := dnsZonesPager.NextPage(cntx)
 			if err != nil {
-				log.Fatalf("failed to advance page: %v", err)
+				return "", fmt.Errorf("failed to advance page: %v", err)
 			}
-			for _, v := range page.Value {
-
-				result = append(result, DnsToCNAME(allResources, *v, x)...)
+			for _, dnsZone := range page.Value {
+				cnameRecords, err := getDnsCNAMERecords(allVulnerableResources, *dnsZone, subscriptionID)
+				if err != nil {
+					return "", err
+				}
+				detectedVulnerabilities = append(detectedVulnerabilities, cnameRecords...)
 			}
 		}
 	}
 
-	// report of the subdomains
-	if len(result) > 0 {
-		notify(result)
-		resultStamp := strings.Join(result, "|")
-		return resultStamp, nil
-	} else {
-		return "No subdomain", nil
-	}
-
+	sendSlackNotification(detectedVulnerabilities)
+	return "", nil
 }
 
 func main() {
