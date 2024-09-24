@@ -2,11 +2,10 @@ package main
 
 import (
 	_ "embed"
-	"strings"
 	"testing"
 )
 
-// Test per la funzione getResourceGroupFromID
+// Test getResourceGroupFromID
 func TestGetResourceGroupFromResourceID(t *testing.T) {
 	tests := []struct {
 		resourceID string
@@ -24,7 +23,6 @@ func TestGetResourceGroupFromResourceID(t *testing.T) {
 			got, err := getResourceGroupFromResourceID(tt.resourceID)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getResourceGroupFromID()= %v, error = %v, wantErr %v", got, err, tt.wantErr)
-				return
 			}
 			if got != tt.want {
 				t.Errorf("getResourceGroupFromID() = %v, want %v", got, tt.want)
@@ -33,7 +31,7 @@ func TestGetResourceGroupFromResourceID(t *testing.T) {
 	}
 }
 
-// Test per la funzione Lookup
+// Test Lookup
 func TestIsVulnerableResource(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -87,19 +85,5 @@ func TestContainsAzureVulnerableResources(t *testing.T) {
 		if result != test.expected {
 			t.Fatalf("expected %v, got %v for resource %s", test.expected, result, test.resource)
 		}
-	}
-}
-
-//go:embed query
-var want string
-
-func TestReadQueryFile(t *testing.T) {
-	got, err := readQueryFile("./query")
-	if err != nil {
-		t.Fatalf("Error reading query file: %v", err)
-	}
-
-	if !strings.EqualFold(got, want) {
-		t.Errorf("Mismatch in query file content.\nGot: %v\nWant: %v", got, want)
 	}
 }

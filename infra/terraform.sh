@@ -7,29 +7,34 @@ env=$2
 shift 2
 other=$@
 
+# Check for missing action argument
 if [ -z "$action" ]; then
-  echo "Missed action: init, apply, plan"
-  exit 0
+  echo "Error: Missing action. Valid actions are: init, apply, plan, refresh, import, output, state, taint, destroy, console."
+  exit 1
 fi
 
-if [ -z "$env" ]; then
-  echo "env should be: dev, uat or prod."
-  exit 0
+# Check for missing environment argument and validate it
+if [ -z "$env" ] || ! [[ "$env" =~ ^(dev|uat|prod)$ ]]; then
+  echo "Error: Invalid environment. Valid environments are: dev, uat, or prod."
+  exit 1
 fi
 
-if echo "init plan apply refresh import output state taint destroy console" | grep -w $action > /dev/null; then
-  if [ $action = "init" ]; then
-    terraform $action -backend-config="./env/$env/backend.tfvars" $other
-  elif [ $action = "output" ] || [ $action = "state" ] || [ $action = "taint" ]; then
-    # init terraform backend
-    terraform init -reconfigure -backend-config="./env/$env/backend.tfvars"
-    terraform $action $other
-  else
-    # init terraform backend
-    terraform init -reconfigure -backend-config="./env/$env/backend.tfvars"
-    terraform $action -var-file="./env/$env/terraform.tfvars" $other
-  fi
+# Validate the action
+valid_actions="init plan apply refresh import output state taint destroy console"
+if echo "$valid_actions" | grep -qw "$action"; then
+  # Initialize Terraform backend
+  terraform init -reconfigure -backend-config="./env/$env/backend.tfvars"
+
+  # Handle specific actions
+  case "$action" in
+    output | state | taint)
+      terraform $action $other
+      ;;
+    *)
+      terraform $action -var-file="./env/$env/terraform.tfvars" $other
+      ;;
+  esac
 else
-    echo "Action not allowed."
-    exit 1
+  echo "Error: Invalid action '$action'. Allowed actions are: $valid_actions."
+  exit 1
 fi

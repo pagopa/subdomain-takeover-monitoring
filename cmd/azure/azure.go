@@ -82,25 +82,35 @@ func getDnsCNAMERecords(resources map[string]struct{}, dnsZone armdns.Zone, subs
 		if err != nil {
 			return nil, fmt.Errorf("failed to advance page: %v", err)
 		}
+
 		for _, record := range page.Value {
-			if record.Properties != nil && record.Properties.CnameRecord != nil && record.Properties.CnameRecord.Cname != nil && record.Properties.Fqdn != nil {
-				cname := strings.TrimSpace(*record.Properties.CnameRecord.Cname)
-				cname = strings.TrimRight(cname, ".")
-				if containsAzureVulnerableResources(cname) {
-					if strings.Contains(cname, "azureedge.net") {
-						splits := strings.Split(cname, ".")
-						if len(splits) >= 4 {
-							cname = strings.Join(splits[len(splits)-3:], ".")
-						}
-					}
-					if isVulnerableResource(resources, cname) {
-						vulnerableResources = append(vulnerableResources, strings.Join([]string{*record.Properties.Fqdn, cname}, " -> "))
-					}
+			props := record.Properties
+			if props == nil || props.CnameRecord == nil || props.CnameRecord.Cname == nil || props.Fqdn == nil {
+				continue
+			}
+
+			fqdn := *props.Fqdn
+			cname := strings.TrimRight(strings.TrimSpace(*props.CnameRecord.Cname), ".")
+
+			if !containsAzureVulnerableResources(cname) {
+				continue
+			}
+
+			if strings.Contains(cname, "azureedge.net") {
+				splits := strings.Split(cname, ".")
+				if len(splits) >= 4 {
+					cname = strings.Join(splits[len(splits)-3:], ".")
 				}
+			}
+
+			if isVulnerableResource(resources, cname) {
+				vulnerableResources = append(vulnerableResources, fqdn+" -> "+cname)
 			}
 		}
 	}
+
 	return vulnerableResources, nil
+
 }
 
 func isVulnerableResource(resources map[string]struct{}, cname string) bool {
@@ -183,7 +193,7 @@ func HandleRequest(ctx context.Context, event Event) (string, error) {
 		return "", fmt.Errorf("failed to create resource graph client: %v", err)
 	}
 
-	query, err := readQueryFile("./query")
+	query, err := readQueryFile("../../assets/img/queries/query_azure")
 	if err != nil {
 		return "", err
 	}
