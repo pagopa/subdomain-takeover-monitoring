@@ -18,6 +18,7 @@ After cloning the repository, execute the following command:
 
 ```bash
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ./infra/tf_generated_azure/src/bootstrap ./cmd/azure/azure.go && cp ./assets/img/queries/query_azure ./infra/tf_generated_azure/src/query
+```
 
 ## Components and Infrastructure
 
