@@ -18,7 +18,7 @@ The current implementation focuses on Azure resources:
 
 Here there is the logic flow of the implementation:
 
-![logicflow](./img/logic-flow.png)
+![logicflow](./assets/img/logic-flow.png)
 
 The **subdomain takeover monitoring** solution involves continuous monitoring of DNS records and identification of potential vulnerabilities in subdomains associated with Azure resources.
 
