@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	badNotificationText  = "🚨🧐 Potentially vulnerable resources susceptible to subdomain takeover detected 🧐🚨"
-	goodNotificationText = "🙌🚀 Everything good, well done 🙌🚀"
+    badNotificationText  = "⚠️🔍 Attention: Potentially vulnerable resources detected in Azure, susceptible to subdomain takeover. Take immediate action to secure your infrastructure!"
+    goodNotificationText = "🎉🚀 Everything is under control on the azure org!"
 )
+
 
 type Event struct {
 	Name string `json:"name"`
