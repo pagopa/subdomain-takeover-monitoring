@@ -81,7 +81,7 @@ func getDnsCNAMERecords(resources map[string]struct{}, dnsZone armdns.Zone, subs
 	for recordSetPager.More() {
 		page, err := recordSetPager.NextPage(cntx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to advance page: %v", err)
+			return nil, fmt.Errorf("recordSetPager failed to advance page: %v", err)
 		}
 
 		for _, record := range page.Value {
@@ -143,7 +143,7 @@ func getAllAzureSubscriptions() ([]string, error) {
 	for pager.More() {
 		page, err := pager.NextPage(cntx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to advance page: %v", err)
+			return nil, fmt.Errorf("subs pager failed to advance page: %v", err)
 		}
 		for _, subscription := range page.Value {
 			subscriptionIDs = append(subscriptionIDs, *subscription.SubscriptionID)
@@ -194,7 +194,7 @@ func HandleRequest(ctx context.Context, event Event) (string, error) {
 		return "", fmt.Errorf("failed to create resource graph client: %v", err)
 	}
 
-	query, err := readQueryFile("../../assets/img/queries/query_azure")
+	query, err := readQueryFile("./query")
 	if err != nil {
 		return "", err
 	}
@@ -243,7 +243,10 @@ func HandleRequest(ctx context.Context, event Event) (string, error) {
 		for dnsZonesPager.More() {
 			page, err := dnsZonesPager.NextPage(cntx)
 			if err != nil {
-				return "", fmt.Errorf("failed to advance page: %v", err)
+				if strings.Contains(err.Error(), "does not exist") {
+					break
+				}
+				return "", fmt.Errorf("dnsZonesPager failed to advance page: %v", err)
 			}
 			for _, dnsZone := range page.Value {
 				cnameRecords, err := getDnsCNAMERecords(allVulnerableResources, *dnsZone, subscriptionID)
