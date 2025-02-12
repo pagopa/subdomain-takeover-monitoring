@@ -47,6 +47,8 @@ module "lambda_aws_list-accounts" {
 
   environment_variables = {
     SQS_LIST_ACCOUNTS = data.aws_ssm_parameter.sqs_list_accounts.value
+    LIST_ACCOUNTS_ROLE = data.aws_ssm_parameter.list_accounts_role.value
+    LIST_ACCOUNTS_ROLE_SESSION_NAME = data.aws_ssm_parameter.list_accounts_role_session_name.value
   }
 }
 
@@ -54,4 +56,36 @@ data "aws_ssm_parameter" "sqs_list_accounts" {
   name = "SQS_LIST_ACCOUNTS"
 }
 
-//TODO: creare ruolo per la lambda con permessi di write su SQS
+data "aws_ssm_parameter" "list_accounts_role" {
+  name = "LIST_ACCOUNTS_ROLE"
+}
+
+data "aws_ssm_parameter" "list_accounts_role_session_name" {
+  name = "LIST_ACCOUNTS_ROLE_SESSION_NAME"
+}
+
+resource "aws_iam_role_policy_attachment" "attach-sqs-policy" {
+  role       = module.lambda_aws_list-accounts.lambda_role_name
+  policy_arn = aws_iam_policy.sqs_write_policy.arn
+}
+
+resource "aws_iam_policy" "cross_account_role_policy" {
+  name        = "cross-account-role-policy"
+  description = "Allows lambda function to assume cross-account role"
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+            "Effect": "Allow",
+            "Action": "sts:AssumeRole",
+            "Resource": "arn:aws:iam::519902559805:role/CrossAccountSubdomainTakeOverLambda"
+        }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "attach-cross-account-role-policy" {
+  role       = module.lambda_aws_list-accounts.lambda_role_name
+  policy_arn = aws_iam_policy.cross_account_role_policy.arn
+}
