@@ -35,6 +35,7 @@ terraform.rc
 
 infra/tf_generated_azure
 infra/tf_generated_aws_list-lambda
+infra/tf_generated_aws_verify-takeover
 cmd/parsing/
 
 .DS_Store
