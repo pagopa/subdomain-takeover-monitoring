@@ -4,7 +4,7 @@ Resources:
   ProdSec:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: prodsec-role-lambda-verify-takeover
+      RoleName: ProdSecRoleLambdaVerifyTakeover
       Description: "Role used by product security to verify presence of subdomain takeover vulnerability for the account"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"

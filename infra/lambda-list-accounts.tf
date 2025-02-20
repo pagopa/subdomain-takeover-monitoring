@@ -42,12 +42,13 @@ module "lambda_aws_list-accounts" {
   allowed_triggers = {
     ScheduleRule = {
       principal = "events.amazonaws.com"
+      source_arn = aws_cloudwatch_event_rule.schedule_aws.arn
     }
   }
 
   environment_variables = {
-    SQS_LIST_ACCOUNTS = data.aws_ssm_parameter.sqs_list_accounts.value
-    LIST_ACCOUNTS_ROLE = data.aws_ssm_parameter.list_accounts_role.value
+    SQS_LIST_ACCOUNTS               = data.aws_ssm_parameter.sqs_list_accounts.value
+    LIST_ACCOUNTS_ROLE              = data.aws_ssm_parameter.list_accounts_role.value
     LIST_ACCOUNTS_ROLE_SESSION_NAME = data.aws_ssm_parameter.list_accounts_role_session_name.value
   }
 }
@@ -64,7 +65,7 @@ data "aws_ssm_parameter" "list_accounts_role_session_name" {
   name = "LIST_ACCOUNTS_ROLE_SESSION_NAME"
 }
 
-resource "aws_iam_role_policy_attachment" "attach-sqs-policy" {
+resource "aws_iam_role_policy_attachment" "attach-sqs-policy-lambda-list" {
   role       = module.lambda_aws_list-accounts.lambda_role_name
   policy_arn = aws_iam_policy.sqs_write_policy.arn
 }
@@ -77,10 +78,10 @@ resource "aws_iam_policy" "cross_account_role_policy" {
     Version = "2012-10-17",
     Statement = [
       {
-            "Effect": "Allow",
-            "Action": "sts:AssumeRole",
-            "Resource": "arn:aws:iam::519902559805:role/CrossAccountSubdomainTakeOverLambda"
-        }
+        "Effect" : "Allow",
+        "Action" : "sts:AssumeRole",
+        "Resource" : "arn:aws:iam::519902559805:role/CrossAccountSubdomainTakeOverLambda"
+      }
     ]
   })
 }
@@ -88,4 +89,16 @@ resource "aws_iam_policy" "cross_account_role_policy" {
 resource "aws_iam_role_policy_attachment" "attach-cross-account-role-policy" {
   role       = module.lambda_aws_list-accounts.lambda_role_name
   policy_arn = aws_iam_policy.cross_account_role_policy.arn
+}
+
+resource "aws_cloudwatch_event_rule" "schedule_aws" {
+  name                = "Monday-schedule-aws-lists-accounts"
+  description         = "Schedule a run for every monday"
+  schedule_expression = "cron(0 9 ? * MON *)"
+
+}
+
+resource "aws_cloudwatch_event_target" "schedule_awv_lists_accounts" {
+  rule = aws_cloudwatch_event_rule.schedule_aws.name
+  arn  = module.lambda_aws_list-accounts.lambda_function_arn
 }
