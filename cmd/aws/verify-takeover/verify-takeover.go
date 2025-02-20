@@ -36,8 +36,8 @@ const (
 var VULNERABLE_AWS_RESOURCES []string = []string{"S3", "Elasticbeanstalk"}
 
 type ExtractedResult struct {
-	Name            string //images.example.com
-	ResourceDNSName string //images.example.com.s3.us-east-1.amazonaws.com
+	Name            string //images.example.com or test23
+	ResourceDNSName string //images.example.com.s3.us-east-1.amazonaws.com or test23.eu-south-1.elasticbeanstalk.com
 	Found           bool
 	HostedZoneName  string
 	HostedZoneId    string
