@@ -118,6 +118,8 @@ func processAccount(account *types.Account) ([]string, error) {
 
 	if len(vulnerableAWSResources) > 0 {
 		jsonResult, _ := json.Marshal(vulnerableAWSResources)
+		*account.Name = strings.ReplaceAll(strings.ReplaceAll(*account.Name, "\n", ""), "\r", "")
+		*account.Id = strings.ReplaceAll(strings.ReplaceAll(*account.Id, "\n", ""), "\r", "")
 		fmt.Printf("Risorse soggette a subdomain takeover per l'account %s - %s : \n", *account.Name, *account.Id)
 		fmt.Println(string(jsonResult))
 	}
