@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"subdomain/internal/pkg/slack"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -12,14 +13,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/slack-go/slack"
 )
 
 const (
-    badNotificationText  = "⚠️🔍 Attention: Potentially vulnerable resources detected in Azure, susceptible to subdomain takeover. Take immediate action to secure your infrastructure!"
-    goodNotificationText = "🎉🚀 Everything is under control on the azure org!"
+	AZURE_ORG = "azure"
 )
-
 
 type Event struct {
 	Name string `json:"name"`
@@ -152,37 +150,6 @@ func getAllAzureSubscriptions() ([]string, error) {
 	return subscriptionIDs, nil
 }
 
-func sendSlackNotification(vulnerableResources []string) error {
-	slackToken := os.Getenv("SLACK_TOKEN")
-	slackChannelID := os.Getenv("CHANNEL_ID")
-	slackClient := slack.New(slackToken)
-
-	if len(vulnerableResources) > 0 {
-		var formattedResources []string
-		for _, resource := range vulnerableResources {
-			formattedResources = append(formattedResources, "• "+resource)
-		}
-		resourceListText := strings.Join(formattedResources, "\n")
-
-		attachments := []slack.Attachment{
-			{
-				Text: resourceListText,
-			},
-		}
-
-		_, _, err := slackClient.PostMessage(slackChannelID, slack.MsgOptionText(badNotificationText, true), slack.MsgOptionAttachments(attachments...))
-		if err != nil {
-			return fmt.Errorf("slack notification failed: %v", err)
-		}
-	} else {
-		_, _, err := slackClient.PostMessage(slackChannelID, slack.MsgOptionText(goodNotificationText, true), slack.MsgOptionAttachments())
-		if err != nil {
-			return fmt.Errorf("slack notification failed: %v", err)
-		}
-	}
-	return nil
-}
-
 func HandleRequest(ctx context.Context, event Event) (string, error) {
 	credential, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
@@ -258,7 +225,12 @@ func HandleRequest(ctx context.Context, event Event) (string, error) {
 		}
 	}
 
-	sendSlackNotification(detectedVulnerabilities)
+	err = slack.SendSlackNotification(detectedVulnerabilities, AZURE_ORG)
+
+	if err != nil {
+		return "", fmt.Errorf("slack notification failed %v", err)
+	}
+
 	return "", nil
 }
 

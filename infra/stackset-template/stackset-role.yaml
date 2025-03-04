@@ -1,0 +1,46 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Resources:
+  ProdSec:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ProdSecRoleLambdaVerifyTakeover
+      Description: "Role used by product security to verify presence of subdomain takeover vulnerability for the account"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - arn:aws:iam::637423468901:role/aws_verify-takeover
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: ProdSecRoute53Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - route53:GetHostedZone
+                  - route53:ListHostedZones
+                  - route53:ListResourceRecordSets
+                  - route53:GetHostedZoneCount
+                  - route53:ListHostedZonesByName
+                Resource: "*"
+        - PolicyName: ProdSecS3BucketPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                Resource: "*" 
+        - PolicyName: ProdSecEBSPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - elasticbeanstalk:Describe*   
+                Resource: "*"
