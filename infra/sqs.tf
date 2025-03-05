@@ -3,10 +3,10 @@ resource "aws_sqs_queue" "account-ids" {
   name                       = "account-ids"
   visibility_timeout_seconds = 180
   message_retention_seconds  = 300
-  redrive_policy         = jsonencode({
-      deadLetterTargetArn  = aws_sqs_queue.account_ids_deadletter_queue.arn
-      maxReceiveCount      = 4
-    })
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.account_ids_deadletter_queue.arn
+    maxReceiveCount     = 4
+  })
   tags = {
     Name = "account-ids"
   }

@@ -41,7 +41,7 @@ module "lambda_aws_list-accounts" {
 
   allowed_triggers = {
     ScheduleRule = {
-      principal = "events.amazonaws.com"
+      principal  = "events.amazonaws.com"
       source_arn = aws_cloudwatch_event_rule.schedule_aws.arn
     }
   }

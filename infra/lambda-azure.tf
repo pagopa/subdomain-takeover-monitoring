@@ -31,6 +31,9 @@ data "aws_ssm_parameter" "slack_token" {
 data "aws_ssm_parameter" "channel_id" {
   name = "CHANNEL_ID"
 }
+data "aws_ssm_parameter" "channel_id_debug" {
+  name = "CHANNEL_ID_DEBUG"
+}
 
 module "lambda_azure" {
   source = "git::https://github.com/terraform-aws-modules/terraform-aws-lambda.git?ref=b88a85627c84a4e9d1ad2a655455d10b386bc63f"
@@ -54,6 +57,7 @@ module "lambda_azure" {
   environment_variables = {
     SLACK_TOKEN         = data.aws_ssm_parameter.slack_token.value,
     CHANNEL_ID          = data.aws_ssm_parameter.channel_id.value,
+    CHANNEL_ID_DEBUG    = data.aws_ssm_parameter.channel_id_debug.value,
     AZURE_TENANT_ID     = data.aws_ssm_parameter.azure_tenant_id.value,
     AZURE_CLIENT_ID     = data.aws_ssm_parameter.azure_client_id.value,
     AZURE_CLIENT_SECRET = data.aws_ssm_parameter.azure_client_secret.value

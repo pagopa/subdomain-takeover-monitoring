@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"maps"
 	"os"
@@ -92,7 +93,7 @@ func processAccount(account *types.Account) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	log.Println("Clients created")
 	DNSZonesPoitingToAWSResource := make(map[string]*ExtractedResult)
 	AWSResources := make(map[string]bool)
 
@@ -101,17 +102,20 @@ func processAccount(account *types.Account) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Println("Listed potential vulnerable CNAME record")
 
 	//List S3 buckets belonging to the assumed account
 	err = listS3Buckets(s3Client, AWSResources)
 	if err != nil {
 		return nil, err
 	}
+	log.Println("Listed account's S3")
 	//List EBS environments belonging to the assumed account
 	err = listEBSEnvironment(ebsClient, AWSResources)
 	if err != nil {
 		return nil, err
 	}
+	log.Println("Listed account's EBS")
 
 	//Verify takeover
 	vulnerableAWSResources, vulnerableItems := verifyTakeover(DNSZonesPoitingToAWSResource, AWSResources)
@@ -120,8 +124,8 @@ func processAccount(account *types.Account) ([]string, error) {
 		jsonResult, _ := json.Marshal(vulnerableAWSResources)
 		*account.Name = strings.ReplaceAll(strings.ReplaceAll(*account.Name, "\n", ""), "\r", "")
 		*account.Id = strings.ReplaceAll(strings.ReplaceAll(*account.Id, "\n", ""), "\r", "")
-		fmt.Printf("Risorse soggette a subdomain takeover per l'account %s - %s : \n", *account.Name, *account.Id)
-		fmt.Println(string(jsonResult))
+		log.Printf("Resources vulnerable to subdomain takeover for account %s - %s:\n", *account.Name, *account.Id)
+		log.Println(string(jsonResult))
 	}
 
 	return vulnerableItems, nil
@@ -182,7 +186,7 @@ func listPotentialVulnerableDNSRecord(r53Client *route53.Client, DNSZonesPoiting
 		nextMarker = tempRes.NextMarker
 		resultDNS = append(resultDNS, tempRes.HostedZones...)
 	}
-	//Pagination ok
+	//Pagination
 	for _, hostedZone := range resultDNS {
 		pagination = true
 		nextMarker = nil
@@ -236,7 +240,7 @@ func extractCNAMERecords(recordSetsOutput *route53.ListResourceRecordSetsOutput,
 }
 
 func listS3Buckets(s3Client *s3.Client, AWSResources map[string]bool) error {
-	//Pagination ok
+	//Pagination
 	p := s3.NewListBucketsPaginator(s3Client, &s3.ListBucketsInput{})
 	for p.HasMorePages() {
 		page, err := p.NextPage(context.TODO())
@@ -251,7 +255,7 @@ func listS3Buckets(s3Client *s3.Client, AWSResources map[string]bool) error {
 }
 
 func listEBSEnvironment(ebsClient *elasticbeanstalk.Client, AWSResources map[string]bool) error {
-	//Pagination ok
+	//Pagination
 	pagination := true
 	var nextMarker *string
 	var environments []ebsTypes.EnvironmentDescription

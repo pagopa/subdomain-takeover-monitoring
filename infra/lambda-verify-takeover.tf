@@ -49,6 +49,7 @@ module "lambda_aws_verify-takeover" {
   environment_variables = {
     SLACK_TOKEN                     = data.aws_ssm_parameter.slack_token.value,
     CHANNEL_ID                      = data.aws_ssm_parameter.channel_id.value,
+    CHANNEL_ID_DEBUG                = data.aws_ssm_parameter.channel_id_debug.value,
     SQS_LIST_ACCOUNTS               = data.aws_ssm_parameter.sqs_list_accounts.value
     PRODSEC_READONLY_ROLE           = data.aws_ssm_parameter.prodsec_read_only_role.value
     LIST_ACCOUNTS_ROLE_SESSION_NAME = data.aws_ssm_parameter.list_accounts_role_session_name.value
