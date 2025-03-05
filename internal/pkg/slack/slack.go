@@ -2,7 +2,7 @@ package slack
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -20,11 +20,11 @@ func SendSlackNotification(vulnerableResources []string, cloud_provider string) 
 	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
 	slackClient := slack.New(slackToken)
 
-	log.Printf("Cloud provider: %s", cloud_provider)
-	log.Printf("Number of vulnerable resources: %d", len(vulnerableResources))
+	slog.Info(fmt.Sprintf("Cloud provider: %s", cloud_provider))
+	slog.Info(fmt.Sprintf("Number of vulnerable resources: %d", len(vulnerableResources)))
 
 	if len(vulnerableResources) > 0 {
-		log.Println("Vulnerable resources detected")
+		slog.Info("Vulnerable resources detected")
 		var formattedResources []string
 		for _, resource := range vulnerableResources {
 			formattedResources = append(formattedResources, "• "+resource)
@@ -36,18 +36,18 @@ func SendSlackNotification(vulnerableResources []string, cloud_provider string) 
 				Text: resourceListText,
 			},
 		}
-		log.Printf("Vulnerable resources: %s", resourceListText)
+		slog.Info(fmt.Sprintf("Vulnerable resources: %s", resourceListText))
 		_, _, err := slackClient.PostMessage(slackChannelID, slack.MsgOptionText(fmt.Sprintf(badNotificationText, cloud_provider), true), slack.MsgOptionAttachments(attachments...))
 		if err != nil {
 			return err
 		}
-		log.Println("Alert message sent successfully")
+		slog.Info("Alert message sent successfully")
 	} else {
 		_, _, err := slackClient.PostMessage(slackChannelIDDebug, slack.MsgOptionText(fmt.Sprintf(goodNotificationText, cloud_provider), true), slack.MsgOptionAttachments())
 		if err != nil {
 			return err
 		}
-		log.Println("Alert message sent successfully")
+		slog.Info("Alert message sent successfully")
 	}
 	return nil
 }

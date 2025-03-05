@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"subdomain/internal/pkg/slack"
@@ -148,7 +148,7 @@ func getAllAzureSubscriptions() ([]string, error) {
 }
 
 func HandleRequest(ctx context.Context, event interface{}) (string, error) {
-	log.Println("Starting handlerequest")
+	slog.Info("Starting handlerequest")
 	credential, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain a credential: %v", err)
@@ -192,13 +192,13 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 			resourceQueryRequest.Options.SkipToken = resourceQueryResult.QueryResponse.SkipToken
 		}
 	}
-	log.Println("resources query completed successfully")
+	slog.Info("resources query completed successfully")
 
 	subscriptionIDs, err := getAllAzureSubscriptions()
 	if err != nil {
 		return "", err
 	}
-	log.Println("getAllAzureSubscriptions completed successfully")
+	slog.Info("getAllAzureSubscriptions completed successfully")
 	var detectedVulnerabilities []string
 	for _, subscriptionID := range subscriptionIDs {
 		clientFactory, err := armdns.NewClientFactory(subscriptionID, credential, nil)
@@ -224,17 +224,17 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 			}
 		}
 	}
-	log.Println("DNS zone analysis completed successfully")
+	slog.Info("DNS zone analysis completed successfully")
 	err = slack.SendSlackNotification(detectedVulnerabilities, AZURE_ORG)
 
 	if err != nil {
 		return "", fmt.Errorf("slack notification failed %v", err)
 	}
-	log.Println("HandleRequest completed successfully")
+	slog.Info("HandleRequest completed successfully")
 	return "HandleRequest completed successfully", nil
 }
 
 func main() {
-	log.Println("Starting Lambda")
+	slog.Info("Starting Lambda")
 	lambda.Start(HandleRequest)
 }

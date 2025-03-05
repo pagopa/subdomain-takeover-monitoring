@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -66,7 +66,7 @@ func assumeCrossRole() (*organizations.Client, error) {
 }
 
 func listAwsOrganizationAccounts() ([]types.Account, error) {
-	log.Println("Starting the listing account")
+	slog.Info("Starting the listing account")
 	client, err := assumeCrossRole()
 	if err != nil {
 		return nil, err
@@ -87,12 +87,12 @@ func listAwsOrganizationAccounts() ([]types.Account, error) {
 		result.Accounts = append(result.Accounts, result2.Accounts...)
 		nextToken = result2.NextToken
 	}
-	log.Println("listing account completed")
+	slog.Info("listing account completed")
 	return result.Accounts, nil
 }
 
 func writeAccountsToSQS(accounts []types.Account, sqsUrl string) error {
-	log.Println("Writing accounts to the SQS")
+	slog.Info("Writing accounts to the SQS")
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return err
@@ -107,6 +107,6 @@ func writeAccountsToSQS(accounts []types.Account, sqsUrl string) error {
 	if err != nil {
 		return err
 	}
-	log.Println("Writing to the SQS completed")
+	slog.Info("Writing to the SQS completed")
 	return nil
 }
