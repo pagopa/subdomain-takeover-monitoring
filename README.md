@@ -8,7 +8,7 @@ The repository is organized into two main parts:
 
 - **cmd folder**: Contains Golang scripts used for Lambda functions.
   - `azure/`: Scripts for the Azure Lambda function.
-  - `aws/`: Planned scripts for the AWS Lambda function (yet to be implemented).
+  - `aws/`: Scripts for the AWS Lambda functions.
 
 - **infra folder**: Includes Terraform scripts for setting up necessary infrastructure.
 
@@ -21,15 +21,14 @@ GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ./infra/tf_generated_azure/src
 ```
 
 ## Components and Infrastructure
+The **subdomain takeover monitoring** solution involves continuous monitoring of DNS records and identification of potential vulnerabilities in subdomains associated with Azure and AWS resources.
 
-The current implementation focuses on Azure resources:
-
-Here there is the logic flow of the implementation:
+### Subdomain Takeover Monitoring - Azure implementation
+Here there is the logic implementation of the tool which focuses on Azure resources:
 
 ![logicflow](./assets/img/logic-flow.png)
 
-The **subdomain takeover monitoring** solution involves continuous monitoring of DNS records and identification of potential vulnerabilities in subdomains associated with Azure resources.
+### Subdomain Takeover Monitoring - AWS implementation
+Here there is the logic implementation of the tool which focuses on AWS resources:
 
-
-_NOTE: The AWS part is planned but not yet implemented._
 
