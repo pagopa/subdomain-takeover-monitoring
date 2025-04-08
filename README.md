@@ -26,9 +26,11 @@ The **subdomain takeover monitoring** solution involves continuous monitoring of
 ### Subdomain Takeover Monitoring - Azure implementation
 Here there is the logic implementation of the tool which focuses on Azure resources:
 
-![logicflow](./assets/img/logic-flow.png)
+![logicflow](./assets/img/logic-flow-azure.png)
 
 ### Subdomain Takeover Monitoring - AWS implementation
 Here there is the logic implementation of the tool which focuses on AWS resources:
+
+![logicflow](./assets/img/logic-flow-aws.png)
 
 
