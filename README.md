@@ -14,10 +14,16 @@ The repository is organized into two main parts:
 
 ## Prerequisites
 
-After cloning the repository, execute the following command:
+After cloning the repository, execute the following commands:
 
 ```bash
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ./infra/tf_generated_azure/src/bootstrap ./cmd/azure/azure.go && cp ./assets/img/queries/query_azure ./infra/tf_generated_azure/src/query
+```
+```bash
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ./infra/tf_generated_aws_list-lambda/src/bootstrap ./cmd/aws/list-lambda/list-lambda.go
+```
+```bash
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ./infra/tf_generated_aws_verify-takeover/src/bootstrap ./cmd/aws/verify-takeover/verify-takeover.go
 ```
 
 ## Components and Infrastructure
