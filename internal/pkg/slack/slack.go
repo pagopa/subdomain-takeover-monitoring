@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	badNotificationText  = "Attention: Potentially vulnerable resources detected in %s, susceptible to subdomain takeover."
-	goodNotificationText = "Everything is under control on the %s org!"
+	badNotificationText  = "Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover. The affected resources do not belong to PagoPA’s tenants. Please remove any dangling DNS records from the hosted zones to mitigate the risk."
+	goodNotificationText = "All DNS records in %s are secure and properly configured."
 )
 
 func SendSlackNotification(vulnerableResources []string, cloud_provider string) error {
