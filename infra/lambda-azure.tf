@@ -1,7 +1,11 @@
 resource "null_resource" "azure_function_binary" {
   triggers = {
-    build_trigger = "${md5(file(local.azure_src_path))}"
+    build_trigger = sha256(join("", [
+      filesha256("${local.azure_src_path}"),
+      filesha256("${path.module}/../internal/pkg/slack/slack.go")
+    ]))
   }
+
   provisioner "local-exec" {
     command = "GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ${local.azure_binary_path} ${local.azure_src_path} && cp ${local.query_src_path} ${local.query_binary_path} "
   }
