@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-The **Subdomain Takeover Monitoring** project aims to detect and prevent potential subdomain takeovers, a critical security vulnerability where attackers exploit abandoned or misconfigured subdomains to gain unauthorized control. This vulnerability can lead to severe risks such as phishing attacks or unauthorized access. Effective DNS management and timely subdomain decommissioning are crucial to mitigate these security threats.
+The **Subdomain Takeover Monitoring** to detect and prevent potential subdomain takeover, a critical security vulnerability where attackers exploit abandoned or misconfigured subdomains. This vulnerability can cause serious risks, such as phishing attacks or data theft. Effective DNS management and timely deactivation of subdomains are critical to mitigating these threats.
 
 The repository is organized into two main parts:
 

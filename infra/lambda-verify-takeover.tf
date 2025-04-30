@@ -1,6 +1,9 @@
 resource "null_resource" "verify-takeover_binary" {
   triggers = {
-    build_trigger = "${md5(file(local.aws_verify-takeover_src_path))}"
+    build_trigger = sha256(join("", [
+      filesha256("${local.aws_verify-takeover_src_path}"),
+      filesha256("${path.module}/../internal/pkg/slack/slack.go")
+    ]))
   }
   provisioner "local-exec" {
     command = "GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ${local.aws_verify-takeover_binary_path} ${local.aws_verify-takeover_src_path}"
