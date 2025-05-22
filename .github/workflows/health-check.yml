@@ -2,7 +2,6 @@ name: Cloud Health Check
 
 on:
   workflow_dispatch:
-
 jobs:
   setup:
     name: Setup environment
