@@ -37,7 +37,8 @@ jobs:
       - name: AWS - Create DNS Zone Route53
         id: aws-step-dns-zone-creation
         run: |
-            aws route53 create-hosted-zone --name "${{env.dns_zone}}" --caller-reference "$(date +%s)"> zone.json
+            CALLER_REF=$(openssl rand -hex 6)
+            aws route53 create-hosted-zone --name ${{env.dns_zone}} --caller-reference ${CALLER_REF}> zone.json
             ZONE_ID=$(jq -r '.HostedZone.Id' zone.json | cut -d'/' -f3)
             echo "zone_id=$ZONE_ID" >> $GITHUB_ENV
             echo "Hosted zone ${{env.dns_zone}} created with zone_id= ${ZONE_ID}"
