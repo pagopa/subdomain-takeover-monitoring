@@ -7,21 +7,44 @@
         "route53:GetHostedZone",
         "route53:ListTagsForResource",
         "route53:ListResourceRecordSets",
-        "route53:CreateHostedZone"
+        "route53:CreateHostedZone",
+        "route53:ChangeResourceRecordSets",
+        "route53:DeleteHostedZone"
       ],
       "Resource":[
-        "arn:aws:route53:::hostedzone/*"
+        "*"
       ]
     },
     {
       "Effect":"Allow",
       "Action":[
         "s3:CreateBucket",
-        "s3:PutBucketAcl"
+        "s3:PutBucketAcl",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketOwnershipControls",
+        "s3:DeleteBucket"
       ],
       "Resource":[
-        "*"
+        "arn:aws:s3:::*",
+        "arn:aws:s3:::*/*"
       ]
+    },
+    {
+      "Sid": "LmabdaConfiguraton",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunctionConfiguration",
+        "lambda:UpdateFunctionConfiguration"
+      ],
+      "Resource": "arn:aws:lambda:eu-south-1:637423468901:function:aws_verify-takeover"
+    },
+    {
+      "Sid": "LambdaInvoke",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:InvokeFunction"
+      ],
+      "Resource": "arn:aws:lambda:eu-south-1:637423468901:function:aws_list-accounts"
     }
   ]
 }

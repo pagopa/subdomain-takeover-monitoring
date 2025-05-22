@@ -1,12 +1,14 @@
-name: Cloud Health Check
+name: Cloud Health Check on AWS
 
 on:
   workflow_dispatch:
+  push:
+  pull_request:
 jobs:
   setup:
     name: Setup environment
     runs-on: ubuntu-24.04
-    environment: prod
+    environment: dev
     permissions:
       id-token: write   # This is required for requesting the OIDC JWT
       contents: read    # This is required for actions/checkout Action
@@ -23,32 +25,38 @@ jobs:
           aws-region: eu-south-1
           role-to-assume: ${{ secrets.ARN_ROLE }}
           role-session-name: oidc-gha-assume-role-session
-      - name: Generate random DNS zone
-        id: gen-vars
-        run: |
-          RANDOM_STR=$(openssl rand -hex 6)
-          DNS_ZONE="${RANDOM_STR}-pippopluto.net"
-          SUBDOMAIN_AND_S3_NAME="subdomain.${RANDOM_STR}"
-          echo "dns_zone=$DNS_ZONE" >> $GITHUB_OUTPUT
-          echo "subdomain_and_s3_name=$SUBDOMAIN_AND_S3_NAME" >> $GITHUB_OUTPUT
+      - name: Make scripts executable
+        id: make-scripts-executable
+        run: chmod +x scripts/aws/*.sh
+      - name: Generate random DNS ZoneId and ZoneName
+        id: generate-variables
+        run: ./scripts/aws/generate_variables.sh
         shell: bash
-        env:
-          DNS_ZONE: ${{ steps.set-vars.outputs.dns_zone }}
-          SUBDOMAIN_AND_S3_NAME : ${{ steps.set-vars.outputs.subdomain_and_s3_name }}
-      - name: AWS - Create DNS Zone Route53
-        id: aws-step-dns-zone-creation
-        run: |
-            aws route53 create-hosted-zone --name "${DNS_ZONE}" > zone.json
-            ZONE_ID=$(jq -r '.HostedZone.Id' zone.json | cut -d'/' -f3)
-            echo "zone_id=$ZONE_ID" >> $GITHUB_ENV
-            echo "Hosted zone ${DNS_ZONE} created with zone_id= ${ZONE_ID}"
-      - name: AWS - Create bucket S3
-        id: aws-step-S3-bucket-creation
-        run: |
-            BUCKET_NAME="${SUBDOMAIN_AND_S3_NAME}"
-            REGION="eu-south-1"
-            aws s3api create-bucket --bucket $BUCKET_NAME --region $REGION --acl public-read-write
-            S3_FQDN="$BUCKET_NAME.s3.$REGION.amazonaws.com"
-            echo "bucket_url=https://$S3_FQDN" >> $GITHUB_OUTPUT
-        env:
-          BUCKET_URL: ${{ steps.set-vars.outputs.bucket_url }}
+      - name: Create DNS Zone Route53
+        id: create-dns-zone
+        run: ./scripts/aws/create_dns_zone.sh
+      - name: Create bucket S3
+        id: create-bucket-s3
+        run: ./scripts/aws/create_bucket_s3.sh
+      - name: Create CNAME record for S3
+        id: create-cname-record-for-s3
+        run: ./scripts/aws/create_cname_record_for_s3.sh
+      - name: Delete S3 bucket
+        id: delete-s3-bucket
+        run: ./scripts/aws/delete_s3_bucket.sh
+      - name: Change slack channel to dev
+        id: change-slack-channel-to-dev
+        run: ./scripts/aws/change_slack_channel_to_dev.sh
+        env: 
+          DEV_ENV_VALUE: ${{ secrets.DEV_ENV_VALUE }}
+      - name: Invoke lambda and send alert to Slack
+        id: invoke-lambda-aws-subdomain-tool
+        run: ./scripts/aws/invoke_lambda.sh
+      - name: Change slack channel to prod
+        id: change-slack-channel-to-prod
+        run: ./scripts/aws/change_slack_channel_to_prod.sh
+        env: 
+          PROD_ENV_VALUE: ${{ secrets.PROD_ENV_VALUE }}
+      - name: Delete DNS zone and cleanup records
+        id: delete-dns-zone
+        run: ./scripts/aws/delete_dns_zone.sh
