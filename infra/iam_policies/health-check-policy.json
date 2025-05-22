@@ -10,7 +10,7 @@
         "route53:CreateHostedZone"
       ],
       "Resource":[
-        "arn:aws:route53:::hostedzone/*"
+        "*"
       ]
     },
     {
