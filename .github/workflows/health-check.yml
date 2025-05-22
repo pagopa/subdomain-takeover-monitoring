@@ -2,6 +2,8 @@ name: Cloud Health Check
 
 on:
   workflow_dispatch:
+  push:
+  pull_request:
 jobs:
   setup:
     name: Setup environment
