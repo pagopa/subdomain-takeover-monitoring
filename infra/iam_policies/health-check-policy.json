@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect":"Allow",
+      "Action":[
+        "route53:GetHostedZone",
+        "route53:ListTagsForResource",
+        "route53:ListResourceRecordSets",
+        "route53:CreateHostedZone"
+      ],
+      "Resource":[
+        "arn:aws:route53:::hostedzone/*"
+      ]
+    },
+    {
+      "Effect":"Allow",
+      "Action":[
+        "s3:CreateBucket",
+        "s3:PutBucketAcl"
+      ],
+      "Resource":[
+        "*"
+      ]
+    }
+  ]
+}
