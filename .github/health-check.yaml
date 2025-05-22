@@ -1,0 +1,55 @@
+name: Cloud Health Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    name: Setup environment
+    runs-on: ubuntu-24.04
+    environment: prod
+    permissions:
+      id-token: write   # This is required for requesting the OIDC JWT
+      contents: read    # This is required for actions/checkout Action
+    steps:
+      - name: Checkout
+        uses: actions/checkout@a12a3943b4bdde767164f792f33f40b04645d846
+      - name: Use Node.js 16
+        uses: actions/setup-node@9ced9a43a244f3ac94f13bfd896db8c8f30da67a
+        with:
+          node-version: 16
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@50ac8dd1e1b10d09dac7b8727528b91bed831ac0
+        with:
+          aws-region: eu-south-1
+          role-to-assume: ${{ secrets.ARN_ROLE }}
+          role-session-name: oidc-gha-assume-role-session
+      - name: Generate random DNS zone
+        id: gen-vars
+        run: |
+          RANDOM_STR=$(openssl rand -hex 6)
+          DNS_ZONE="${RANDOM_STR}-pippopluto.net"
+          SUBDOMAIN_AND_S3_NAME="subdomain.${RANDOM_STR}"
+          echo "dns_zone=$DNS_ZONE" >> $GITHUB_OUTPUT
+          echo "subdomain_and_s3_name=$SUBDOMAIN_AND_S3_NAME" >> $GITHUB_OUTPUT
+        shell: bash
+        env:
+          DNS_ZONE: ${{ steps.set-vars.outputs.dns_zone }}
+          SUBDOMAIN_AND_S3_NAME : ${{ steps.set-vars.outputs.subdomain_and_s3_name }}
+      - name: AWS - Create DNS Zone Route53
+        id: aws-step-dns-zone-creation
+        run: |
+            aws route53 create-hosted-zone --name "${DNS_ZONE}" > zone.json
+            ZONE_ID=$(jq -r '.HostedZone.Id' zone.json | cut -d'/' -f3)
+            echo "zone_id=$ZONE_ID" >> $GITHUB_ENV
+            echo "Hosted zone ${DNS_ZONE} created with zone_id= ${ZONE_ID}"
+      - name: AWS - Create bucket S3
+        id: aws-step-S3-bucket-creation
+        run: |
+            BUCKET_NAME="${SUBDOMAIN_AND_S3_NAME}"
+            REGION="eu-south-1"
+            aws s3api create-bucket --bucket $BUCKET_NAME --region $REGION --acl public-read-write
+            S3_FQDN="$BUCKET_NAME.s3.$REGION.amazonaws.com"
+            echo "bucket_url=https://$S3_FQDN" >> $GITHUB_OUTPUT
+        env:
+          BUCKET_URL: ${{ steps.set-vars.outputs.bucket_url }}
