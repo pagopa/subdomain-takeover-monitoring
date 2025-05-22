@@ -35,12 +35,12 @@ jobs:
           echo "subdomain_and_s3_name=$SUBDOMAIN_AND_S3_NAME" >> $GITHUB_OUTPUT
         shell: bash
         env:
-          DNS_ZONE: ${{ steps.set-vars.outputs.dns_zone }}
-          SUBDOMAIN_AND_S3_NAME : ${{ steps.set-vars.outputs.subdomain_and_s3_name }}
+          DNS_ZONE: ${{ steps.gen-vars.outputs.dns_zone }}
+          SUBDOMAIN_AND_S3_NAME : ${{ steps.gen-vars.outputs.subdomain_and_s3_name }}
       - name: AWS - Create DNS Zone Route53
         id: aws-step-dns-zone-creation
         run: |
-            aws route53 create-hosted-zone --name "${DNS_ZONE}" > zone.json
+            aws route53 create-hosted-zone --name "${DNS_ZONE}" --caller-reference "$(date +%s)"> zone.json
             ZONE_ID=$(jq -r '.HostedZone.Id' zone.json | cut -d'/' -f3)
             echo "zone_id=$ZONE_ID" >> $GITHUB_ENV
             echo "Hosted zone ${DNS_ZONE} created with zone_id= ${ZONE_ID}"
@@ -53,4 +53,4 @@ jobs:
             S3_FQDN="$BUCKET_NAME.s3.$REGION.amazonaws.com"
             echo "bucket_url=https://$S3_FQDN" >> $GITHUB_OUTPUT
         env:
-          BUCKET_URL: ${{ steps.set-vars.outputs.bucket_url }}
+          BUCKET_URL: ${{ steps.aws-step-S3-bucket-creation.outputs.bucket_url }}
