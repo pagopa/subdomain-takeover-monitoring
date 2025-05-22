@@ -31,19 +31,16 @@ jobs:
           RANDOM_STR=$(openssl rand -hex 6)
           DNS_ZONE="${RANDOM_STR}-pippopluto.net"
           SUBDOMAIN_AND_S3_NAME="subdomain.${RANDOM_STR}"
-          echo "dns_zone=$DNS_ZONE" >> $GITHUB_OUTPUT
-          echo "subdomain_and_s3_name=$SUBDOMAIN_AND_S3_NAME" >> $GITHUB_OUTPUT
+          echo "dns_zone=$DNS_ZONE" >> $GITHUB_ENV
+          echo "subdomain_and_s3_name=$SUBDOMAIN_AND_S3_NAME" >> $GITHUB_ENV
         shell: bash
-        env:
-          DNS_ZONE: ${{ steps.gen-vars.outputs.dns_zone }}
-          SUBDOMAIN_AND_S3_NAME : ${{ steps.gen-vars.outputs.subdomain_and_s3_name }}
       - name: AWS - Create DNS Zone Route53
         id: aws-step-dns-zone-creation
         run: |
-            aws route53 create-hosted-zone --name "${DNS_ZONE}" --caller-reference "$(date +%s)"> zone.json
+            aws route53 create-hosted-zone --name "${{env.dns_zone}}" --caller-reference "$(date +%s)"> zone.json
             ZONE_ID=$(jq -r '.HostedZone.Id' zone.json | cut -d'/' -f3)
             echo "zone_id=$ZONE_ID" >> $GITHUB_ENV
-            echo "Hosted zone ${DNS_ZONE} created with zone_id= ${ZONE_ID}"
+            echo "Hosted zone ${{env.dns_zone}} created with zone_id= ${ZONE_ID}"
       - name: AWS - Create bucket S3
         id: aws-step-S3-bucket-creation
         run: |
@@ -51,6 +48,4 @@ jobs:
             REGION="eu-south-1"
             aws s3api create-bucket --bucket $BUCKET_NAME --region $REGION --acl public-read-write
             S3_FQDN="$BUCKET_NAME.s3.$REGION.amazonaws.com"
-            echo "bucket_url=https://$S3_FQDN" >> $GITHUB_OUTPUT
-        env:
-          BUCKET_URL: ${{ steps.aws-step-S3-bucket-creation.outputs.bucket_url }}
+            echo "bucket_url=https://$S3_FQDN" >> $GITHUB_ENV
