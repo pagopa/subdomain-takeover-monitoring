@@ -1,4 +1,4 @@
-name: Cloud Health Check on AWS
+name: Subdomain takeover monitoring tool health check on AWS
 
 on:
   workflow_dispatch:
