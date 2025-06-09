@@ -64,7 +64,20 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 }
 
 func main() {
+	SetupLogger()
+	slog.Info("Starting Lambda")
 	lambda.Start(HandleRequest)
+}
+
+func SetupLogger() {
+
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}
+
+	handler := slog.NewJSONHandler(os.Stderr, opts)
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
 }
 
 func processMessage(record events.SQSMessage) ([]string, error) {

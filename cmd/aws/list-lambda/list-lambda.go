@@ -37,7 +37,20 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 }
 
 func main() {
+	SetupLogger()
+	slog.Info("Starting Lambda")
 	lambda.Start(HandleRequest)
+}
+
+func SetupLogger() {
+
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}
+
+	handler := slog.NewJSONHandler(os.Stderr, opts)
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
 }
 
 func assumeCrossRole() (*organizations.Client, error) {
