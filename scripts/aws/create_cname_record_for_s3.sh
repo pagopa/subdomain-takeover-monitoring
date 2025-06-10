@@ -15,4 +15,4 @@ aws route53 change-resource-record-sets \
       }
     }]
   }'
-echo "✅ CNAME recordo for S3 created correctly."
+echo "✅ CNAME record for S3 created correctly."
