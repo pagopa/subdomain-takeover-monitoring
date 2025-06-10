@@ -7,4 +7,4 @@ aws lambda invoke \
 --function-name "$LAMBDA_NAME" \
 --payload '{}' \
 out.json > /dev/null 2>&1
-echo "✅ Lamnda invoked correctly."
+echo "✅ Lambda invoked correctly."
