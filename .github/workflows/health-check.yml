@@ -3,7 +3,7 @@ name: Subdomain takeover monitoring tool health check on AWS
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 7 * * 2'  # Every tuesday at 7:00 UTC
+    - cron: '0 7 * * *' #Every day at 7:00 UTC
 jobs:
   setup:
     name: Setup environment

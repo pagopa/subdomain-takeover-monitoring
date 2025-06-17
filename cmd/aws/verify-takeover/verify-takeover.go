@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"strings"
+	"subdomain/internal/pkg/logger"
 	"subdomain/internal/pkg/slack"
 
 	"net/url"
@@ -64,20 +65,9 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 }
 
 func main() {
-	SetupLogger()
+	logger.SetupLogger(slog.LevelDebug)
 	slog.Info("Starting Lambda")
 	lambda.Start(HandleRequest)
-}
-
-func SetupLogger() {
-
-	opts := &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}
-
-	handler := slog.NewJSONHandler(os.Stderr, opts)
-	logger := slog.New(handler)
-	slog.SetDefault(logger)
 }
 
 func processMessage(record events.SQSMessage) ([]string, error) {
