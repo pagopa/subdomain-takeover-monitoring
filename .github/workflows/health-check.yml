@@ -60,4 +60,4 @@ jobs:
       - name: Invalidate OIDC Token
         id: invalidate-oidc-token
         run: |
-          aws sso logout --access-token $AWS_SESSION_TOKEN
+          aws sso logout
