@@ -61,3 +61,6 @@ jobs:
         id: invalidate-oidc-token
         run: |
           aws sso logout
+      - name: Create DNS Zone Route53 part 2
+        id: create-dns-zone-part2
+        run: ./scripts/aws/create_dns_zone.sh
