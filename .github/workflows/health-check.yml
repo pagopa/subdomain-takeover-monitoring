@@ -1,0 +1,63 @@
+name: Subdomain takeover monitoring tool health check on AWS
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 7 * * 2' #Every tuesday at 7:00 UTC
+  push:
+jobs:
+  setup:
+    name: Setup environment
+    runs-on: ubuntu-24.04
+    environment: dev
+    permissions:
+      id-token: write   # This is required for requesting the OIDC JWT
+      contents: read    # This is required for actions/checkout Action
+    steps:
+      - name: Checkout
+        uses: actions/checkout@a12a3943b4bdde767164f792f33f40b04645d846
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@50ac8dd1e1b10d09dac7b8727528b91bed831ac0
+        with:
+          aws-region: eu-south-1
+          role-to-assume: ${{ secrets.ARN_ROLE }}
+          role-session-name: oidc-gha-assume-role-session
+      - name: Make scripts executable
+        id: make-scripts-executable
+        run: chmod +x scripts/aws/*.sh
+      - name: Generate random DNS ZoneId and ZoneName
+        id: generate-variables
+        run: ./scripts/aws/generate_variables.sh
+        shell: bash
+      - name: Create DNS Zone Route53
+        id: create-dns-zone
+        run: ./scripts/aws/create_dns_zone.sh
+      - name: Create bucket S3
+        id: create-bucket-s3
+        run: ./scripts/aws/create_bucket_s3.sh
+      - name: Create CNAME record for S3
+        id: create-cname-record-for-s3
+        run: ./scripts/aws/create_cname_record_for_s3.sh
+      - name: Delete S3 bucket
+        id: delete-s3-bucket
+        run: ./scripts/aws/delete_s3_bucket.sh
+      - name: Change slack channel to dev
+        id: change-slack-channel-to-dev
+        run: ./scripts/aws/change_slack_channel_to_dev.sh
+        env: 
+          DEV_ENV_VALUE: ${{ secrets.DEV_ENV_VALUE }}
+      - name: Invoke lambda and send alert to Slack
+        id: invoke-lambda-aws-subdomain-tool
+        run: ./scripts/aws/invoke_lambda.sh
+      - name: Change slack channel to prod
+        id: change-slack-channel-to-prod
+        run: ./scripts/aws/change_slack_channel_to_prod.sh
+        env: 
+          PROD_ENV_VALUE: ${{ secrets.PROD_ENV_VALUE }}
+      - name: Delete DNS zone and cleanup records
+        id: delete-dns-zone
+        run: ./scripts/aws/delete_dns_zone.sh
+      - name: Invalidate OIDC Token
+        id: invalidate-oidc-token
+        run: |
+          aws sso logout

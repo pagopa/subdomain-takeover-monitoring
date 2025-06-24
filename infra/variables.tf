@@ -14,3 +14,9 @@ variable "tags" {
     "Environment" : "Dev"
   }
 }
+
+variable "github_repository" {
+  type        = string
+  description = "Subdomain takeover monitoring github repository"
+  default     = "pagopa/subdomain-takeover-monitoring"
+}

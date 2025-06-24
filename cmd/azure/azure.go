@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"subdomain/internal/pkg/logger"
 	"subdomain/internal/pkg/slack"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -235,6 +236,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 }
 
 func main() {
+	logger.SetupLogger(slog.LevelDebug)
 	slog.Info("Starting Lambda")
 	lambda.Start(HandleRequest)
 }
