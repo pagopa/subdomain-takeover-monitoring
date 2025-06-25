@@ -1,1 +1,0 @@
-eval $(./export.py terraform.tfvars | sed -E "s/^Exported (TF_VAR_[^=]+)=(.+)$/export \1='\2'/")
