@@ -3,7 +3,7 @@ set -e
 
 echo "🔗 Changing slack channel id to prod... waiting for 3 minutes"
 sleep 180
-LAMBDA_NAME="aws_verify-takeover"
+LAMBDA_NAME="azure-lambda-dev"
 CURRENT_ENV=$(aws lambda get-function-configuration --function-name "$LAMBDA_NAME" --query 'Environment.Variables' --output json)
 ENV_KEY="CHANNEL_ID"
 UPDATED_ENV=$(echo "$CURRENT_ENV" | jq --arg key "$ENV_KEY" --arg value "$PROD_ENV_VALUE" '.[$key] = $value')
