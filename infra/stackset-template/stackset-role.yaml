@@ -12,7 +12,8 @@ Resources:
           - Effect: Allow
             Principal:
               AWS:
-                - arn:aws:iam::637423468901:role/aws_verify-takeover
+                - arn:aws:iam::637423468901:role/aws_verify-takeover-dev
+                - arn:aws:iam::637423468901:role/aws_verify-takeover-prod
             Action:
               - sts:AssumeRole
       Policies:

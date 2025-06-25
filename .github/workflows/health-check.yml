@@ -40,19 +40,9 @@ jobs:
       - name: Delete S3 bucket
         id: delete-s3-bucket
         run: ./scripts/aws/delete_s3_bucket.sh
-      - name: Change slack channel to dev
-        id: change-slack-channel-to-dev
-        run: ./scripts/aws/change_slack_channel_to_dev.sh
-        env: 
-          DEV_ENV_VALUE: ${{ secrets.DEV_ENV_VALUE }}
       - name: Invoke lambda and send alert to Slack
         id: invoke-lambda-aws-subdomain-tool
         run: ./scripts/aws/invoke_lambda.sh
-      - name: Change slack channel to prod
-        id: change-slack-channel-to-prod
-        run: ./scripts/aws/change_slack_channel_to_prod.sh
-        env: 
-          PROD_ENV_VALUE: ${{ secrets.PROD_ENV_VALUE }}
       - name: Delete DNS zone and cleanup records
         id: delete-dns-zone
         run: ./scripts/aws/delete_dns_zone.sh

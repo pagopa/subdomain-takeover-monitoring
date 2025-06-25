@@ -24,8 +24,8 @@ module "lambda_aws_verify-takeover" {
   depends_on = [
     data.archive_file.aws_verify-takeover_function_archive
   ]
-  function_name           = "aws_verify-takeover"
-  description             = "Lambda function used to verify subdomain takeover into AWS accounts of organization"
+  function_name           = "aws_verify-takeover-${var.env}"
+  description             = "Lambda function used to verify subdomain takeover into AWS accounts of organization for ${var.env} environment"
   runtime                 = "provided.al2023"
   architectures           = ["arm64"]
   handler                 = "bootstrap"
@@ -38,7 +38,7 @@ module "lambda_aws_verify-takeover" {
   memory_size = 128
   timeout     = 180
 
-  logging_log_group                 = "/aws/lambda/aws_verify-takeover"
+  logging_log_group                 = "/aws/lambda/aws_verify-takeover-${var.env}"
   cloudwatch_logs_retention_in_days = 7
 
 
@@ -57,6 +57,8 @@ module "lambda_aws_verify-takeover" {
     PRODSEC_READONLY_ROLE           = data.aws_ssm_parameter.prodsec_read_only_role.value
     LIST_ACCOUNTS_ROLE_SESSION_NAME = data.aws_ssm_parameter.list_accounts_role_session_name.value
   }
+
+  tags = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "attach-sqs-policy-verify-takeover" {
@@ -75,8 +77,9 @@ data "aws_ssm_parameter" "prodsec_read_only_role" {
 }
 
 resource "aws_iam_policy" "prodsec_cross_account_policy" {
-  name        = "ProdSecCrossAccountPolicy"
+  name        = "ProdSecCrossAccountPolicy-${var.env}"
   description = "Allows sts assume role"
+  tags = var.tags
 
   policy = jsonencode({
     Version = "2012-10-17",
@@ -87,7 +90,7 @@ resource "aws_iam_policy" "prodsec_cross_account_policy" {
         ],
         Effect = "Allow",
         Resource = [
-          "arn:aws:iam::*:role/ProdsecRoleLambdaVerifyTakeover"
+          "arn:aws:iam::*:role/ProdSecRoleLambdaVerifyTakeover"
         ]
       }
     ]

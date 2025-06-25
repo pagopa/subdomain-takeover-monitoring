@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	region = "eu-south-1"
+	region_env = "REGION"
 )
 
 func HandleRequest(ctx context.Context, event interface{}) (string, error) {
@@ -95,6 +95,7 @@ func listAwsOrganizationAccounts() ([]types.Account, error) {
 }
 
 func writeAccountsToSQS(accounts []types.Account, sqsUrl string) error {
+	region := os.Getenv(region_env)
 	slog.Info("Writing accounts to the SQS")
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {

@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-echo "🧹 Cleaning up DNS zone..."
+echo "🧹 Cleaning up DNS zone... but before waiting for 3 minutes"
+sleep 180
 RECORDS=$(aws route53 list-resource-record-sets \
   --hosted-zone-id $zone_id \
   --query "ResourceRecordSets[?Type!='NS' && Type!='SOA']" \
