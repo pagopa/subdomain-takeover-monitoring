@@ -17,6 +17,6 @@ variable "tags" {
 
 variable "github_repository" {
   type        = string
-  description = "This github repository"
+  description = "Subdomain takeover monitoring github repository"
   default     = "pagopa/subdomain-takeover-monitoring"
 }

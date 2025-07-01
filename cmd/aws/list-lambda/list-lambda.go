@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
+	"subdomain/internal/pkg/logger"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -37,6 +38,8 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 }
 
 func main() {
+	logger.SetupLogger(slog.LevelDebug)
+	slog.Info("Starting Lambda")
 	lambda.Start(HandleRequest)
 }
 

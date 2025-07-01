@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"strings"
+	"subdomain/internal/pkg/logger"
 	"subdomain/internal/pkg/slack"
 
 	"net/url"
@@ -64,6 +65,8 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 }
 
 func main() {
+	logger.SetupLogger(slog.LevelDebug)
+	slog.Info("Starting Lambda")
 	lambda.Start(HandleRequest)
 }
 
