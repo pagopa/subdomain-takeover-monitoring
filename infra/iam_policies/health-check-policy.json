@@ -45,6 +45,16 @@
         "lambda:InvokeFunction"
       ],
       "Resource": "arn:aws:lambda:eu-south-1:637423468901:function:aws_list-accounts"
+    },
+    {
+      "Sid": "LmabdaConfigurationAzure",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunctionConfiguration",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:InvokeFunction"
+      ],
+      "Resource": "arn:aws:lambda:eu-south-1:637423468901:function:azure-lambda"
     }
   ]
 }
