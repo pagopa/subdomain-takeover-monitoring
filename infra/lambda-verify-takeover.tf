@@ -79,7 +79,7 @@ data "aws_ssm_parameter" "prodsec_read_only_role" {
 resource "aws_iam_policy" "prodsec_cross_account_policy" {
   name        = "ProdSecCrossAccountPolicy-${var.env}"
   description = "Allows sts assume role"
-  tags = var.tags
+  tags        = var.tags
 
   policy = jsonencode({
     Version = "2012-10-17",

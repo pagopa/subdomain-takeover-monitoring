@@ -50,7 +50,6 @@ module "lambda_aws_list-accounts" {
     SQS_LIST_ACCOUNTS               = data.aws_ssm_parameter.sqs_list_accounts.value
     LIST_ACCOUNTS_ROLE              = data.aws_ssm_parameter.list_accounts_role.value
     LIST_ACCOUNTS_ROLE_SESSION_NAME = data.aws_ssm_parameter.list_accounts_role_session_name.value
-    REGION = data.aws_ssm_parameter.region.value
   }
 
   tags = var.tags
@@ -68,10 +67,6 @@ data "aws_ssm_parameter" "list_accounts_role_session_name" {
   name = "LIST_ACCOUNTS_ROLE_SESSION_NAME"
 }
 
-data "aws_ssm_parameter" "region" {
-  name = "REGION"
-}
-
 resource "aws_iam_role_policy_attachment" "attach-sqs-policy-lambda-list" {
   role       = module.lambda_aws_list-accounts.lambda_role_name
   policy_arn = aws_iam_policy.sqs_write_policy.arn
@@ -80,7 +75,7 @@ resource "aws_iam_role_policy_attachment" "attach-sqs-policy-lambda-list" {
 resource "aws_iam_policy" "cross_account_role_policy" {
   name        = "cross-account-role-policy-${var.env}"
   description = "Allows lambda function to assume cross-account role"
-  tags = var.tags
+  tags        = var.tags
 
   policy = jsonencode({
     Version = "2012-10-17",
@@ -104,7 +99,7 @@ resource "aws_cloudwatch_event_rule" "schedule_aws" {
   description         = "Schedule a run for every monday"
   schedule_expression = "cron(0 9 ? * MON *)"
   state               = var.env == "prod" ? "ENABLED" : "DISABLED"
-  tags = var.tags
+  tags                = var.tags
 }
 
 resource "aws_cloudwatch_event_target" "schedule_awv_lists_accounts" {

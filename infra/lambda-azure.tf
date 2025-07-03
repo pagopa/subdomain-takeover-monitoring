@@ -92,7 +92,7 @@ resource "aws_cloudwatch_event_rule" "schedule_azure" {
   description         = "Schedule a run for every monday"
   schedule_expression = "cron(0 9 ? * MON *)"
   state               = var.env == "prod" ? "ENABLED" : "DISABLED"
-  tags = var.tags
+  tags                = var.tags
 }
 
 resource "aws_cloudwatch_event_target" "schedule_lambda_function" {

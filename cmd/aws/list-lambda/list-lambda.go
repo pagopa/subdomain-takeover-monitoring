@@ -18,10 +18,6 @@ import (
 	//"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
-const (
-	region_env = "REGION"
-)
-
 func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	//Download list of accounts belonging to PagoPA org
 	accounts, err := listAwsOrganizationAccounts()
@@ -95,7 +91,7 @@ func listAwsOrganizationAccounts() ([]types.Account, error) {
 }
 
 func writeAccountsToSQS(accounts []types.Account, sqsUrl string) error {
-	region := os.Getenv(region_env)
+	region := os.Getenv("AWS_REGION")
 	slog.Info("Writing accounts to the SQS")
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {

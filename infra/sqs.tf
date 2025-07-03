@@ -13,7 +13,7 @@ resource "aws_sqs_queue" "account-ids" {
 resource "aws_iam_policy" "sqs_write_policy" {
   name        = "sqs-write-policy-${var.env}"
   description = "Allows writing to SQS queue in ${var.env} environment"
-  tags = var.tags
+  tags        = var.tags
 
   policy = jsonencode({
     Version = "2012-10-17",
