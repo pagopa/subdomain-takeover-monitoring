@@ -2,7 +2,7 @@
 set -e
 
 echo "🔗 Invoking lambda of subdomain takeover monitoring tool for AWS..."
-LAMBDA_NAME="aws_list-accounts"
+LAMBDA_NAME="aws_list-accounts-dev"
 aws lambda invoke \
 --function-name "$LAMBDA_NAME" \
 --payload '{}' \
