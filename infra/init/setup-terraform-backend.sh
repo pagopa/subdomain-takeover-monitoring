@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 export AWS_PROFILE=$1
-REGION="eu-west-1"
+REGION=""
 RANDOM_STRING=$(date +%s)
 S3_BUCKET_NAME="terraform-state-${RANDOM_STRING}"
 DYNAMO_TABLE_NAME="terraform-lock"

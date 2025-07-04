@@ -1,8 +1,8 @@
 data "aws_caller_identity" "current" {}
 
 resource "aws_iam_role" "github_health_check_role" {
-  name        = "SubdomainTakeoverHealthCheckRole"
-  description = "Role to perform healt check of subdomain takeover monitoring tool"
+  name        = "SubdomainTakeoverHealthCheckRole-${var.env}"
+  description = "Role to perform healt check of subdomain takeover monitoring tool in ${var.env} environment"
 
 
   assume_role_policy = jsonencode({
@@ -31,12 +31,13 @@ resource "aws_iam_role" "github_health_check_role" {
 }
 
 resource "aws_iam_policy" "subdomain_health_check_policy" {
-  name        = "SubdomainHealtCheckPolicy"
-  description = "Policy to perform healt check of subdomain takeover monitoring tool"
+  name        = "SubdomainHealtCheckPolicy-${var.env}"
+  description = "Policy to perform healt check of subdomain takeover monitoring tool in ${var.env} environment"
 
-  policy = file(
-    "./iam_policies/health-check-policy.json"
-  )
+  policy = templatefile("iam_policies/health-check-policy.json.tmpl", {
+    region             = var.aws_region
+    env                = var.env
+  })
 }
 
 resource "aws_iam_role_policy_attachment" "subdomain_health_check" {
