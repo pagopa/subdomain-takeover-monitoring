@@ -24,18 +24,20 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	slog.Info("List of accounts belonging to PagoPA org correctly downloaded.")
 	//TODO: Write a file containing the account-ids not to be monitored and remove them from the downloaded list
 	sqsQueue := os.Getenv("SQS_LIST_ACCOUNTS")
 	err = writeAccountsToSQS(accounts, sqsQueue)
 	if err != nil {
 		return "", err
 	}
+	slog.Info("List of accounts belonging to PagoPA org correctly wrote on SQS.")
 	return "Execution completed successfully", nil
 }
 
 func main() {
-	logger.SetupLogger(slog.LevelDebug)
-	slog.Info("Starting Lambda")
+	logger.SetupLogger(slog.LevelInfo)
+	slog.Debug("Starting Lambda...")
 	lambda.Start(HandleRequest)
 }
 
@@ -65,7 +67,7 @@ func assumeCrossRole() (*organizations.Client, error) {
 }
 
 func listAwsOrganizationAccounts() ([]types.Account, error) {
-	slog.Info("Starting the listing account")
+	slog.Debug("Starting the listing account")
 	client, err := assumeCrossRole()
 	if err != nil {
 		return nil, err
@@ -86,13 +88,13 @@ func listAwsOrganizationAccounts() ([]types.Account, error) {
 		result.Accounts = append(result.Accounts, result2.Accounts...)
 		nextToken = result2.NextToken
 	}
-	slog.Info("listing account completed")
+	slog.Debug("listing account completed")
 	return result.Accounts, nil
 }
 
 func writeAccountsToSQS(accounts []types.Account, sqsUrl string) error {
 	region := os.Getenv("AWS_REGION")
-	slog.Info("Writing accounts to the SQS")
+	slog.Debug("Writing accounts to the SQS")
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return err
@@ -107,6 +109,6 @@ func writeAccountsToSQS(accounts []types.Account, sqsUrl string) error {
 	if err != nil {
 		return err
 	}
-	slog.Info("Writing to the SQS completed")
+	slog.Debug("Writing to the SQS completed")
 	return nil
 }
