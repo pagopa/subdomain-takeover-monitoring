@@ -15,7 +15,6 @@ jobs:
     environment: dev
     env:
       DEPLOY_ENV: dev
-      REGION: ${{ vars.REGION }}
     permissions:
       id-token: write   # This is required for requesting the OIDC JWT
       contents: read    # This is required for actions/checkout Action
