@@ -2,7 +2,6 @@
 set -e
 
 echo "🔗 Creating S3 bucket..."
-REGION="eu-south-1"
 echo "$subdomain_and_s3_name"
 aws s3api create-bucket --bucket $subdomain_and_s3_name --region $REGION --create-bucket-configuration LocationConstraint=$REGION
 aws s3api put-public-access-block --bucket $subdomain_and_s3_name --public-access-block-configuration "{\"BlockPublicAcls\": false, \"IgnorePublicAcls\": false, \"BlockPublicPolicy\": false, \"RestrictPublicBuckets\": false}"
