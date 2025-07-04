@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🔗 Changing slack channel id to prod"
+echo "🔗 Changing slack channel id to prod..."
 LAMBDA_NAME="aws_verify-takeover-dev"
 CURRENT_ENV=$(aws lambda get-function-configuration --function-name "$LAMBDA_NAME" --query 'Environment.Variables' --output json)
 ENV_KEY="CHANNEL_ID"
