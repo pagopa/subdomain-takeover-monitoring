@@ -1,6 +1,7 @@
 name: Subdomain takeover monitoring tool health check on AWS dev env
 
 on:
+  push:
   workflow_dispatch:
   schedule:
     - cron: '0 7 * * 2' #Every tuesday at 7:00 UTC
