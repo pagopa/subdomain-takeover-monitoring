@@ -1,14 +1,17 @@
-name: Subdomain takeover monitoring tool health check on AWS
+name: Subdomain takeover monitoring tool health check on AWS develop environment
 
 on:
+  pull_request:
+    branches:
+      - develop
   workflow_dispatch:
-  schedule:
-    - cron: '0 7 * * 2' #Every tuesday at 7:00 UTC
 jobs:
   setup:
     name: Setup environment
     runs-on: ubuntu-24.04
     environment: dev
+    env:
+      DEPLOY_ENV: dev
     permissions:
       id-token: write   # This is required for requesting the OIDC JWT
       contents: read    # This is required for actions/checkout Action
@@ -18,7 +21,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@50ac8dd1e1b10d09dac7b8727528b91bed831ac0
         with:
-          aws-region: eu-south-1
+          aws-region: ${{ vars.REGION }}
           role-to-assume: ${{ secrets.ARN_ROLE }}
           role-session-name: oidc-gha-assume-role-session
       - name: Make scripts executable
@@ -42,7 +45,7 @@ jobs:
         run: ./scripts/aws/delete_s3_bucket.sh
       - name: Invoke lambda and send alert to Slack
         id: invoke-lambda-aws-subdomain-tool
-        run: ./scripts/aws/invoke_lambda.sh
+        run: ./scripts/aws/invoke_lambda.sh 
       - name: Delete DNS zone and cleanup records
         id: delete-dns-zone
         run: ./scripts/aws/delete_dns_zone.sh
