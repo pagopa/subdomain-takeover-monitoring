@@ -21,8 +21,8 @@ module "lambda_aws_list-accounts" {
   depends_on = [
     data.archive_file.aws_list-lambda_function_archive
   ]
-  function_name           = "aws_list-accounts"
-  description             = "Lambda function used to list account of AWS organization"
+  function_name           = "aws_list-accounts-${var.env}"
+  description             = "Lambda function used to list account of AWS organization in ${var.env} environment"
   runtime                 = "provided.al2023"
   architectures           = ["arm64"]
   handler                 = "bootstrap"
@@ -35,7 +35,7 @@ module "lambda_aws_list-accounts" {
   memory_size = 128
   timeout     = 900
 
-  logging_log_group                 = "/aws/lambda/aws_list-lambda"
+  logging_log_group                 = "/aws/lambda/aws_list-lambda-${var.env}"
   cloudwatch_logs_retention_in_days = 7
 
 
@@ -51,6 +51,8 @@ module "lambda_aws_list-accounts" {
     LIST_ACCOUNTS_ROLE              = data.aws_ssm_parameter.list_accounts_role.value
     LIST_ACCOUNTS_ROLE_SESSION_NAME = data.aws_ssm_parameter.list_accounts_role_session_name.value
   }
+
+  tags = var.tags
 }
 
 data "aws_ssm_parameter" "sqs_list_accounts" {
@@ -71,8 +73,9 @@ resource "aws_iam_role_policy_attachment" "attach-sqs-policy-lambda-list" {
 }
 
 resource "aws_iam_policy" "cross_account_role_policy" {
-  name        = "cross-account-role-policy"
+  name        = "cross-account-role-policy-${var.env}"
   description = "Allows lambda function to assume cross-account role"
+  tags        = var.tags
 
   policy = jsonencode({
     Version = "2012-10-17",
@@ -92,10 +95,11 @@ resource "aws_iam_role_policy_attachment" "attach-cross-account-role-policy" {
 }
 
 resource "aws_cloudwatch_event_rule" "schedule_aws" {
-  name                = "Monday-schedule-aws-lists-accounts"
+  name                = "Monday-schedule-aws-lists-accounts-${var.env}"
   description         = "Schedule a run for every monday"
   schedule_expression = "cron(0 9 ? * MON *)"
-
+  state               = var.env == "prod" ? "ENABLED" : "DISABLED"
+  tags                = var.tags
 }
 
 resource "aws_cloudwatch_event_target" "schedule_awv_lists_accounts" {

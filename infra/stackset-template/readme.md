@@ -12,7 +12,7 @@ aws cloudformation create-stack-set \
 ```
 aws cloudformation create-stack-instances \
     --stack-set-name prodsec-role-lambda-verify-takeover \
-    --deployment-targets OrganizationalUnitIds=ou-o5rt-cl3k7bnr \
+    --deployment-targets OrganizationalUnitIds=ou-o5rt-5s7xpol0 \
     --regions eu-west-1 \
-    --operation-preferences FailureToleranceCount=0,MaxConcurrentCount=5
+    --operation-preferences FailureToleranceCount=4,MaxConcurrentCount=5
 ```

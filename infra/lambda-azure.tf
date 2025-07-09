@@ -45,8 +45,8 @@ module "lambda_azure" {
   depends_on = [
     data.archive_file.azure_function_archive
   ]
-  function_name           = "azure-lambda"
-  description             = "Lambda function used for the azure subdomaintakeover script"
+  function_name           = "azure-lambda-${var.env}"
+  description             = "Lambda function used for the azure subdomaintakeover script in ${var.env} environment"
   runtime                 = "provided.al2023"
   architectures           = ["arm64"]
   handler                 = "bootstrap"
@@ -71,7 +71,7 @@ module "lambda_azure" {
   memory_size = 128
   timeout     = 900
 
-  logging_log_group                 = "/aws/lambda/azure-lambda"
+  logging_log_group                 = "/aws/lambda/azure-lambda-${var.env}"
   cloudwatch_logs_retention_in_days = 7
 
 
@@ -82,14 +82,17 @@ module "lambda_azure" {
     }
   }
 
+  tags = var.tags
+
 }
 
 
 resource "aws_cloudwatch_event_rule" "schedule_azure" {
-  name                = "Monday-schedule"
+  name                = "Monday-schedule-${var.env}"
   description         = "Schedule a run for every monday"
   schedule_expression = "cron(0 9 ? * MON *)"
-
+  state               = var.env == "prod" ? "ENABLED" : "DISABLED"
+  tags                = var.tags
 }
 
 resource "aws_cloudwatch_event_target" "schedule_lambda_function" {
