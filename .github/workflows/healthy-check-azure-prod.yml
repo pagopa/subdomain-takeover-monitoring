@@ -36,7 +36,7 @@ jobs:
       - name: Make scripts executable
         id: make-scripts-executable
         run: |
-          chmod +x scripts/azure/*.sh
+          chmod +x scripts/*/*.sh
       - name: Create Dangling Case
         id: generate-dangling-case
         run: ./scripts/azure/create_dangling_case.sh

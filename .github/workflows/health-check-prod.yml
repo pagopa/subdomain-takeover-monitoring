@@ -28,7 +28,7 @@ jobs:
           role-session-name: oidc-gha-assume-role-session
       - name: Make scripts executable
         id: make-scripts-executable
-        run: chmod +x scripts/aws/*.sh
+        run: chmod +x scripts/*/*.sh
       - name: Generate random DNS ZoneId and ZoneName
         id: generate-variables
         run: ./scripts/aws/generate_variables.sh
