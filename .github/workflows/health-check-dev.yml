@@ -45,7 +45,9 @@ jobs:
         run: ./scripts/aws/delete_s3_bucket.sh
       - name: Invoke lambda and send alert to Slack
         id: invoke-lambda-aws-subdomain-tool
-        run: ./scripts/aws/invoke_lambda.sh 
+        run: ./scripts/common/invoke_lambda.sh 
+        env: 
+          LAMBDA: "aws_list-accounts"
       - name: Delete DNS zone and cleanup records
         id: delete-dns-zone
         run: ./scripts/aws/delete_dns_zone.sh

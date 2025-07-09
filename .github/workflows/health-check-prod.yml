@@ -47,17 +47,21 @@ jobs:
         run: ./scripts/aws/delete_s3_bucket.sh
       - name: Change slack channel to dev
         id: change-slack-channel-to-dev
-        run: ./scripts/aws/change_slack_channel_to_dev.sh
+        run: ./scripts/common/change_slack_channel_to_dev.sh
         env: 
           DEV_ENV_VALUE: ${{ secrets.DEV_ENV_VALUE }}
+          LAMBDA: "aws_verify-takeover"
       - name: Invoke lambda and send alert to Slack
         id: invoke-lambda-aws-subdomain-tool
-        run: ./scripts/aws/invoke_lambda.sh
+        run: ./scripts/common/invoke_lambda.sh
+        env: 
+          LAMBDA: "aws_list-accounts"
       - name: Change slack channel to prod
         id: change-slack-channel-to-prod
-        run: ./scripts/aws/change_slack_channel_to_prod.sh
+        run: ./scripts/common/change_slack_channel_to_prod.sh
         env: 
           PROD_ENV_VALUE: ${{ secrets.PROD_ENV_VALUE }}
+          LAMBDA: "aws_verify-takeover"
       - name: Delete DNS zone and cleanup records
         id: delete-dns-zone
         run: ./scripts/aws/delete_dns_zone.sh
