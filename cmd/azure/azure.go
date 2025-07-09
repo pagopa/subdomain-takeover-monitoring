@@ -149,7 +149,6 @@ func getAllAzureSubscriptions() ([]string, error) {
 }
 
 func HandleRequest(ctx context.Context, event interface{}) (string, error) {
-	slog.Info("Starting handlerequest")
 	credential, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain a credential: %v", err)
@@ -159,6 +158,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create resource graph client: %v", err)
 	}
+	slog.Debug("Resource graph client correctly created")
 
 	query, err := readQueryFile("./query")
 	if err != nil {
@@ -193,7 +193,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 			resourceQueryRequest.Options.SkipToken = resourceQueryResult.QueryResponse.SkipToken
 		}
 	}
-	slog.Info("resources query completed successfully")
+	slog.Debug("Resources query completed successfully")
 
 	subscriptionIDs, err := getAllAzureSubscriptions()
 	if err != nil {
@@ -225,18 +225,18 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 			}
 		}
 	}
-	slog.Info("DNS zone analysis completed successfully")
+	slog.Info("Subdomain takeover monitoring tool has correctly verified all Azure accounts belonging to PagoPA organization.")
 	err = slack.SendSlackNotification(detectedVulnerabilities, AZURE_ORG)
 
 	if err != nil {
 		return "", fmt.Errorf("slack notification failed %v", err)
 	}
-	slog.Info("HandleRequest completed successfully")
+	slog.Debug("Subdomain takeover monitoring tool sent the result of execution via Slack.")
 	return "HandleRequest completed successfully", nil
 }
 
 func main() {
-	logger.SetupLogger(slog.LevelDebug)
-	slog.Info("Starting Lambda")
+	logger.SetupLogger(slog.LevelInfo)
+	slog.Debug("Starting Lambda")
 	lambda.Start(HandleRequest)
 }

@@ -54,6 +54,7 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 			return "", err
 		}
 	}
+	slog.Info("Subdomain takeover monitoring tool has correctly verified all AWS accounts belonging to PagoPA organization.")
 
 	//Send alert on Slack
 	err = slack.SendSlackNotification(vulnerableItemsOrg, AWS_ORG)
@@ -61,12 +62,14 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 		return "", fmt.Errorf("slack notification failed %v ", err)
 	}
 
+	slog.Debug("Subdomain takeover monitoring tool sent the result of execution via Slack.")
+
 	return "Execution completed successfully", nil
 }
 
 func main() {
-	logger.SetupLogger(slog.LevelDebug)
-	slog.Info("Starting Lambda")
+	logger.SetupLogger(slog.LevelInfo)
+	slog.Debug("Starting Lambda...")
 	lambda.Start(HandleRequest)
 }
 
@@ -81,8 +84,7 @@ func processMessage(record events.SQSMessage) ([]string, error) {
 		vulnerableItemAccount, err := processAccount(&account)
 		if err != nil {
 			//It does not return because the tool continue with other accounts.
-			slog.Error("Error in processing the account....")
-			slog.Error(err.Error())
+			slog.Error("Error in processing the account....", "Error", err.Error())
 		}
 		vulnerableItemsOrg = append(vulnerableItemsOrg, vulnerableItemAccount...)
 	}
@@ -95,7 +97,7 @@ func processAccount(account *types.Account) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("Clients created")
+	slog.Debug("Clients created")
 	DNSZonesPoitingToAWSResource := make(map[string]*ExtractedResult)
 	AWSResources := make(map[string]bool)
 
@@ -104,21 +106,21 @@ func processAccount(account *types.Account) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("Listed potential vulnerable CNAME record")
+	slog.Debug("Listed potential vulnerable CNAME record")
 
 	//List S3 buckets belonging to the assumed account
 	err = listS3Buckets(s3Client, AWSResources)
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("Listed account's S3")
+	slog.Debug("Listed account's S3")
 	//List EBS environments belonging to the assumed account
 	err = listEBSEnvironment(ebsClient, AWSResources)
 	if err != nil {
 		return nil, err
 	}
-	slog.Info(fmt.Sprintf("Resources vulnerable to subdomain takeover for account %s - %s:\n", *account.Name, *account.Id))
-	slog.Info("Listed account's EBS")
+	slog.Debug(fmt.Sprintf("Resources vulnerable to subdomain takeover for account %s - %s:\n", *account.Name, *account.Id))
+	slog.Debug("Listed account's EBS")
 
 	//Verify takeover
 	vulnerableAWSResources, vulnerableItems := verifyTakeover(DNSZonesPoitingToAWSResource, AWSResources)
@@ -128,7 +130,7 @@ func processAccount(account *types.Account) ([]string, error) {
 		*account.Name = strings.ReplaceAll(strings.ReplaceAll(*account.Name, "\n", ""), "\r", "")
 		*account.Id = strings.ReplaceAll(strings.ReplaceAll(*account.Id, "\n", ""), "\r", "")
 
-		slog.Info(string(jsonResult))
+		slog.Debug(string(jsonResult))
 	}
 
 	return vulnerableItems, nil
