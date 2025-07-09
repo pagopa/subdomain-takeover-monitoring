@@ -62,7 +62,7 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 		return "", fmt.Errorf("slack notification failed %v ", err)
 	}
 
-	slog.Info("Subdomain takeover monitoring tool sent the result of execution via Slack.")
+	slog.Debug("Subdomain takeover monitoring tool sent the result of execution via Slack.")
 
 	return "Execution completed successfully", nil
 }

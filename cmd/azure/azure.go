@@ -158,7 +158,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create resource graph client: %v", err)
 	}
-	slog.Info("Resource graph client correctly created")
+	slog.Debug("Resource graph client correctly created")
 
 	query, err := readQueryFile("./query")
 	if err != nil {
@@ -193,7 +193,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 			resourceQueryRequest.Options.SkipToken = resourceQueryResult.QueryResponse.SkipToken
 		}
 	}
-	slog.Info("Resources query completed successfully")
+	slog.Debug("Resources query completed successfully")
 
 	subscriptionIDs, err := getAllAzureSubscriptions()
 	if err != nil {
@@ -231,7 +231,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("slack notification failed %v", err)
 	}
-	slog.Info("Subdomain takeover monitoring tool sent the result of execution via Slack.")
+	slog.Debug("Subdomain takeover monitoring tool sent the result of execution via Slack.")
 	return "HandleRequest completed successfully", nil
 }
 
