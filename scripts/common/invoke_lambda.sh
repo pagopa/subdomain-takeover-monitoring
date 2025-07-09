@@ -2,9 +2,11 @@
 set -e
 
 echo "🔗 Invoking lambda of subdomain takeover monitoring tool for AWS..."
-LAMBDA_NAME="azure-lambda-dev"
+LAMBDA_NAME="$LAMBDA-$DEPLOY_ENV"
 aws lambda invoke \
 --function-name "$LAMBDA_NAME" \
 --payload '{}' \
 out.json > /dev/null 2>&1
 echo "✅ Lambda invoked correctly."
+echo "Waiting for 3 minutes..."
+sleep 180
