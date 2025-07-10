@@ -2,10 +2,6 @@
 set -e
 
 
-
-
-
-sleep 300
 if ! command -v az &> /dev/null; then
     echo "ERROR: Azure CLI not found. Install it before continuing."
     exit 1
