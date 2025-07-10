@@ -8,7 +8,7 @@ RANDOM_SUFFIX=$(shuf -i 1000-9999 -n 1)
 
 
 
-RESOURCE_GROUP="demo-rg-${RANDOM_SUFFIX}"
+RESOURCE_GROUP="demo-rg-subdomain"
 LOCATION="italynorth"
 STORAGE_ACCOUNT_PREFIX="mystorage"
 DNS_ZONE_NAME="example-${RANDOM_SUFFIX}.com"
