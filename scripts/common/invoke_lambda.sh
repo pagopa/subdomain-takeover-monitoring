@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🔗 Invoking lambda of subdomain takeover monitoring tool for AWS..."
+echo "🔗 Invoking lambda of subdomain takeover monitoring tool for Azure"
 LAMBDA_NAME="$LAMBDA-$DEPLOY_ENV"
 aws lambda invoke \
 --function-name "$LAMBDA_NAME" \
