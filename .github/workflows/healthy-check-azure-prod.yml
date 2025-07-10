@@ -1,4 +1,4 @@
-name: Subdomain takeover monitoring tool health check on Azure
+name: Prod environment unhappy path check
 
 on:
   workflow_dispatch:
