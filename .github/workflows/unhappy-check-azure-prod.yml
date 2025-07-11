@@ -39,9 +39,9 @@ jobs:
           chmod +x scripts/*/*.sh
       - name: Change slack channel to dev
         id: change-slack-channel-to-dev
-        run: ./scripts/common/change_slack_channel_to_dev.sh
+        run: ./scripts/common/change_slack_channel.sh
         env: 
-          DEV_ENV_VALUE: ${{ secrets.DEV_ENV_VALUE }}
+          ENV_VALUE: ${{ secrets.DEV_ENV_VALUE }}
       - name: Create Dangling Case
         id: generate-dangling-case
         run: ./scripts/azure/create_dangling_case.sh
@@ -50,9 +50,9 @@ jobs:
         run: ./scripts/common/invoke_lambda.sh
       - name: Change slack channel to prod
         id: change-slack-channel-to-prod
-        run: ./scripts/common/change_slack_channel_to_prod.sh
+        run: ./scripts/common/change_slack_channel.sh
         env: 
-          PROD_ENV_VALUE: ${{ secrets.PROD_ENV_VALUE }}
+          ENV_VALUE: ${{ secrets.PROD_ENV_VALUE }}
       - name: Delete resources
         id: delete-dns-zone
         run: ./scripts/azure/reset.sh
