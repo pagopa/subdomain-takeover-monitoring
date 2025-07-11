@@ -1,10 +1,10 @@
-name: Azure dev environment unhappy path check
+name: Azure dev unhappy path check
 
 on:
   workflow_dispatch:
   pull_request:
     branches:
-      - main
+      - develop
 jobs:
   setup:
     name: Setup environment

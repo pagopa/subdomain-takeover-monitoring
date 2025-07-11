@@ -1,4 +1,4 @@
-name: AWS dev environment unhappy path check
+name: AWS dev unhappy path check
 
 on:
   pull_request:

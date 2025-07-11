@@ -24,7 +24,7 @@ if ! command -v az &> /dev/null; then
     exit 1
 fi
 
-echo "Verifying Azure authentication..."
+echo "Verifying Azure authentication"
 if ! az account show &> /dev/null; then
     echo "ERROR: Not authenticated in Azure. Run 'az login' before continuing."
     exit 1
@@ -37,7 +37,7 @@ az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
 echo "Resource Group '$RESOURCE_GROUP' created/verified"
 echo "RESOURCE_GROUP=$RESOURCE_GROUP" >> $GITHUB_ENV
 
-echo "Creating Storage Account..."
+echo "Creating Storage Account"
 az storage account create \
     --name "$STORAGE_ACCOUNT_NAME" \
     --resource-group "$RESOURCE_GROUP" \
@@ -53,7 +53,7 @@ echo "Storage Account created"
 STORAGE_ENDPOINT="${STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
 
 
-echo "Creating DNS Zone '$DNS_ZONE_NAME'..."
+echo "Creating DNS Zone"
 if az network dns zone show --resource-group "$RESOURCE_GROUP" --name "$DNS_ZONE_NAME" &> /dev/null; then
     echo "WARNING: DNS Zone '$DNS_ZONE_NAME' already exists"
 else
@@ -65,7 +65,7 @@ else
 fi
 
 
-echo "Creating CNAME record '$RECORD_NAME.$DNS_ZONE_NAME' -> '$STORAGE_ENDPOINT'..."
+echo "Creating CNAME record"
 az network dns record-set cname set-record \
     --resource-group "$RESOURCE_GROUP" \
     --zone-name "$DNS_ZONE_NAME" \
@@ -74,7 +74,7 @@ az network dns record-set cname set-record \
     --ttl "$TTL" \
     --output none
 
-echo "CNAME created: $RECORD_NAME.$DNS_ZONE_NAME -> $STORAGE_ENDPOINT"
+echo "CNAME created"
 
 
 echo "Verifying CNAME record:"

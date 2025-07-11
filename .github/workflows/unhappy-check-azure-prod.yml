@@ -1,10 +1,10 @@
-name: Azure prod environment unhappy path check
+name: Azure prod unhappy path check
 
 on:
   workflow_dispatch:
   pull_request:
     branches:
-      - develop
+      - main
   schedule:
     - cron: '0 7 * * 2' #Every tuesday at 7:00 UTC 
 jobs:
