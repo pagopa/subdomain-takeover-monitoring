@@ -1,4 +1,4 @@
-name: Prod environment unhappy path check
+name: Azure prod environment unhappy path check
 
 on:
   workflow_dispatch:

@@ -1,4 +1,4 @@
-name: Dev environment unhappy path check
+name: Azure dev environment unhappy path check
 
 on:
   workflow_dispatch:

@@ -87,8 +87,8 @@ az network dns record-set cname show \
 
 
 
-echo "Waiting 10 seconds before deleting storage account..."
-sleep 10
+echo "Waiting 30 seconds before deleting storage account..."
+sleep 30
 
 
 echo "Deleting Storage Account to create dangling CNAME..."
