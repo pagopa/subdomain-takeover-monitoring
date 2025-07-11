@@ -1,4 +1,4 @@
-name: Subdomain takeover monitoring tool health check on AWS develop environment
+name: AWS dev environment unhappy path check
 
 on:
   pull_request:

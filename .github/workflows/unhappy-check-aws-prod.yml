@@ -1,10 +1,10 @@
-name: Azure prod environment unhappy path check
+name: AWS dev environment unhappy path check
 
 on:
-  workflow_dispatch:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
   schedule:
     - cron: '0 7 * * 2' #Every tuesday at 7:00 UTC 
 jobs:
@@ -14,7 +14,6 @@ jobs:
     environment: prod
     env:
       DEPLOY_ENV: prod
-      LAMBDA: "azure-lambda"
     permissions:
       id-token: write   # This is required for requesting the OIDC JWT
       contents: read    # This is required for actions/checkout Action
@@ -24,43 +23,49 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@50ac8dd1e1b10d09dac7b8727528b91bed831ac0
         with:
-          aws-region: eu-south-1
+          aws-region: ${{ vars.REGION }}
           role-to-assume: ${{ secrets.ARN_ROLE }}
           role-session-name: oidc-gha-assume-role-session
-      - name: Azure login using OIDC
-        uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}  
       - name: Make scripts executable
         id: make-scripts-executable
-        run: |
-          chmod +x scripts/*/*.sh
-      - name: Create Dangling Case
-        id: generate-dangling-case
-        run: ./scripts/azure/create_dangling_case.sh
+        run: chmod +x scripts/*/*.sh
+      - name: Generate random DNS ZoneId and ZoneName
+        id: generate-variables
+        run: ./scripts/aws/generate_variables.sh
+        shell: bash
+      - name: Create DNS Zone Route53
+        id: create-dns-zone
+        run: ./scripts/aws/create_dns_zone.sh
+      - name: Create bucket S3
+        id: create-bucket-s3
+        run: ./scripts/aws/create_bucket_s3.sh
+      - name: Create CNAME record for S3
+        id: create-cname-record-for-s3
+        run: ./scripts/aws/create_cname_record_for_s3.sh
+      - name: Delete S3 bucket
+        id: delete-s3-bucket
+        run: ./scripts/aws/delete_s3_bucket.sh
       - name: Change slack channel to dev
         id: change-slack-channel-to-dev
         run: ./scripts/common/change_slack_channel_to_dev.sh
         env: 
           DEV_ENV_VALUE: ${{ secrets.DEV_ENV_VALUE }}
-      - name: Invoke lambda
+          LAMBDA: "aws_verify-takeover"
+      - name: Invoke lambda and send alert to Slack
         id: invoke-lambda-aws-subdomain-tool
         run: ./scripts/common/invoke_lambda.sh
+        env: 
+          LAMBDA: "aws_list-accounts"
       - name: Change slack channel to prod
         id: change-slack-channel-to-prod
         run: ./scripts/common/change_slack_channel_to_prod.sh
         env: 
           PROD_ENV_VALUE: ${{ secrets.PROD_ENV_VALUE }}
-      - name: Delete resources
+          LAMBDA: "aws_verify-takeover"
+      - name: Delete DNS zone and cleanup records
         id: delete-dns-zone
-        run: ./scripts/azure/reset.sh
-      - name: Azure Logout
-        id: az_logout
-        if: always()
-        shell: bash
+        run: ./scripts/aws/delete_dns_zone.sh
+      - name: Invalidate OIDC Token
+        id: invalidate-oidc-token
         run: |
-            az logout
-            az cache purge
-            az account clear
+          aws sso logout
