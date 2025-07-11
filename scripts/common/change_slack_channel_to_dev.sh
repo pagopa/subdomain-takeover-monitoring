@@ -9,6 +9,6 @@ UPDATED_ENV=$(echo "$CURRENT_ENV" | jq --arg key "$ENV_KEY" --arg value "$DEV_EN
 FINAL_ENV=$(jq -n --argjson vars "$UPDATED_ENV" '{Variables: $vars}')
 echo "$FINAL_ENV" > env.json
 aws lambda update-function-configuration \
-  --function-name ${LAMBDA_NAME} \
+  --function-name $LAMBDA_NAME \
   --environment file://env.json > /dev/null 2>&1
 echo "✅ Slack channel changed correctly." 

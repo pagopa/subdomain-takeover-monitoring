@@ -37,14 +37,14 @@ jobs:
         id: make-scripts-executable
         run: |
           chmod +x scripts/*/*.sh
-      - name: Create Dangling Case
-        id: generate-dangling-case
-        run: ./scripts/azure/create_dangling_case.sh
       - name: Change slack channel to dev
         id: change-slack-channel-to-dev
         run: ./scripts/common/change_slack_channel_to_dev.sh
         env: 
           DEV_ENV_VALUE: ${{ secrets.DEV_ENV_VALUE }}
+      - name: Create Dangling Case
+        id: generate-dangling-case
+        run: ./scripts/azure/create_dangling_case.sh
       - name: Invoke lambda
         id: invoke-lambda-aws-subdomain-tool
         run: ./scripts/common/invoke_lambda.sh
