@@ -9,5 +9,5 @@ aws lambda invoke \
 --payload '{}' \
 out.json > /dev/null 2>&1
 echo "✅ Lambda invoked correctly."
-echo "Waiting for 3 minutes..."
-sleep 180
+echo "Waiting for 5 minutes..."
+sleep 300
