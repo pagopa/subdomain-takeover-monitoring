@@ -24,21 +24,21 @@ build-all: clean-all build-aws-list-accounts build-aws-verify-takeover build-azu
 
 build-aws-list-accounts: 
 	GOOS=${OS} GOARCH=${AWS_ARCH} CGO_ENABLED=${CGO_ENABLED} go build -o ${AWS_LIST_ACCOUNTS_BINARY_NAME} -tags ${TAGS} ${AWS_LIST_ACCOUNTS_PATH}
-	zip ./${AWS_LIST-LAMBDA_ARCHIVE_PATH} ./${AWS_LIST-LAMBDA_BINARY_NAME}
+	zip ${AWS_LIST-LAMBDA_ARCHIVE_PATH} ${AWS_LIST-LAMBDA_BINARY_NAME}
 clean-aws-list-account:
 	go clean
 	rm -f ${AWS_LIST_ACCOUNTS_BINARY_NAME}
 
 build-aws-verify-takeover: 
 	GOOS=${OS} GOARCH=${AWS_ARCH} CGO_ENABLED=${CGO_ENABLED} go build -o ${AWS_VERIFY_TAKEOVER_BINARY_NAME} -tags ${TAGS} ${AWS_VERIFY_TAKEOVER_PATH}
-	zip ./${AWS_VERIFY-TAKEOVER_ARCHIVE_PATH} ./${AWS_VERIFY_TAKEOVER_BINARY_NAME}
+	zip ${AWS_VERIFY-TAKEOVER_ARCHIVE_PATH} ${AWS_VERIFY_TAKEOVER_BINARY_NAME}
 clean-aws-verify-takeover:
 	go clean
 	rm -f ${AWS_VERIFY_TAKEOVER_BINARY_NAME}
 
 build-azure-lambda: 
 	GOOS=${OS} GOARCH=${AWS_ARCH} CGO_ENABLED=${CGO_ENABLED} go build -o ${AZURE_LAMBDA_BINARY_NAME} -tags ${TAGS} ${AZURE_LAMBDA_PATH}
-	zip ./${AZURE_ARCHIVE_PATH} ./${AZURE_LAMBDA_BINARY_NAME}
+	zip ${AZURE_ARCHIVE_PATH} ${AZURE_LAMBDA_BINARY_NAME}
 clean-azure-lambda:
 	go clean
 	rm -f ${AZURE_LAMBDA_BINARY_NAME}
