@@ -24,7 +24,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@50ac8dd1e1b10d09dac7b8727528b91bed831ac0
         with:
-          aws-region: eu-south-1
+          aws-region: ${{ vars.REGION }}
           role-to-assume: ${{ secrets.ARN_ROLE }}
           role-session-name: oidc-gha-assume-role-session
       - name: Azure login using OIDC
