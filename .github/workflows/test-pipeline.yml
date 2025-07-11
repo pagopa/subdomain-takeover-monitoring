@@ -1,0 +1,102 @@
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ "develop", "main" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 'Checkout head branch'
+      uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: Set up Go
+      uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9
+      with:
+        go-version: '1.22.4'
+    
+    - name: 'Compute after coverage'
+      shell: bash
+      run: |
+        go test -cover -v ./... |\
+        grep -v "\[no test files\]" |\
+        grep -v "\[no statements\]" |\
+        grep "^\(ok\|FAIL\).*" |\
+        awk '{printf "%s %d\n", $2, $5}' > after.cover
+        cat after.cover
+    
+    - name: 'Checkout base branch'
+      uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2
+      with:
+        path: base
+        ref: ${{ github.event.pull_request.base.sha }}
+
+    - name: 'Compute before coverage'
+      working-directory: base
+      shell: bash
+      run: |
+        go test -cover ./... |\
+        grep -v "\[no test files\]" |\
+        grep -v "\[no statements\]" |\
+        grep "^\(ok\|FAIL\).*" |\
+        awk '{printf "%s %d\n", $2, $5}' > before.cover
+        cat before.cover
+
+    - name: 'Copy Before'
+      shell: bash
+      run: cp base/before.cover before.cover
+
+    - name: 'Generate diff'
+      shell: bash
+      run: |
+        #!/bin/bash
+        set -oe pipefail
+
+        declare -A coverage_before
+        while read -r pkg x; do
+          coverage_before["$pkg"]="$x"
+        done < "before.cover"
+
+        declare -A coverage_after
+        while read -r pkg x; do
+          coverage_after["$pkg"]="$x"
+        done < "after.cover"
+
+        declare -A all_pkgs
+        for pkg in "${!coverage_before[@]}"; do
+          all_pkgs["$pkg"]=1
+        done
+        for pkg in "${!coverage_after[@]}"; do
+          all_pkgs["$pkg"]=1
+        done
+
+        > diff_raw
+        for pkg in "${!all_pkgs[@]}"; do
+          before="${coverage_before[$pkg]}"
+          after="${coverage_after[$pkg]}"
+
+          if [[ -z "$before" ]]; then # len(before)=0
+            echo "| $pkg | - | ${after}% | " >> diff_raw
+            continue
+          elif [[ -z "$after" ]]; then # len(after)=0
+            echo "| $pkg | ${before}% | - |" >> diff_raw
+            exit 1
+          fi
+
+          if [[ "$before" -gt "$after" ]]; then # before > after
+            echo "| $pkg | Coverave after < coverage before | $before vs $after"
+            exit 1
+          else
+            echo "| $pkg | ${before}% | ${after}% |" >> diff_raw
+          fi
+        done
+
+        echo "Test coverage changes:" > diff
+        echo "| Package | Before | After | " >> diff
+        cat diff_raw | sort >> diff
+
+        cat diff
