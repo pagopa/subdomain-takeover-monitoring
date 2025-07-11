@@ -98,3 +98,5 @@ az storage account delete \
     --yes \
     --output none
 
+echo "Waiting 3 minutes before deleting storage account..."
+sleep 180
