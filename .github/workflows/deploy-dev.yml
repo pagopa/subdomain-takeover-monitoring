@@ -29,6 +29,11 @@ jobs:
         with:
           go-version: 1.21.0
 
+      - name: Create directories
+        run: |
+          mkdir infra/tf_generated_aws_list-lambda infra/tf_generated_aws_list-lambda/src infra/tf_generated_aws_list-lambda/v1
+          mkdir infra/tf_generated_aws_verify-takeover infra/tf_generated_aws_verify-takeover/src infra/tf_generated_aws_verify-takeover/v1
+          mkdir infra/tf_generated_azure infra/tf_generated_azure/src infra/tf_generated_azure/v1
       - name: Build Lambda Functions
         run: |
           make build-all
