@@ -24,7 +24,7 @@ build-all: clean-all build-aws-list-accounts build-aws-verify-takeover build-azu
 
 build-aws-list-accounts: 
 	GOOS=${OS} GOARCH=${AWS_ARCH} CGO_ENABLED=${CGO_ENABLED} go build -o ${AWS_LIST_ACCOUNTS_BINARY_NAME} -tags ${TAGS} ${AWS_LIST_ACCOUNTS_PATH}
-	zip ./${AWS_LIST-LAMBDA_ARCHIVE_PATH} ./${AWS_LIST-LAMBDA_BINARY_NAME}
+	zip ./${AWS_LIST-LAMBDA_ARCHIVE_PATH} ./${AWS_LIST_ACCOUNTS_BINARY_NAME}
 clean-aws-list-account:
 	go clean
 	rm -f ${AWS_LIST_ACCOUNTS_BINARY_NAME}
