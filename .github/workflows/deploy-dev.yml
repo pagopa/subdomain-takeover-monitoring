@@ -4,8 +4,6 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [ "develop" ]
-    paths:
-      - infra/dev/** #To change in infra/prod/** e create a new role in AWS IAM Center
     types: closed
 
 permissions:
