@@ -82,6 +82,8 @@ resource "aws_iam_policy" "subdomain_deploy_pipeline_policy" {
   policy = templatefile("iam_policies/deploy-pipeline-policy.json.tmpl", {
     region             = var.aws_region
     env                = var.env
+    s3_tf_state_bucket = var.s3_tf_state_bucket
+    account_id         = data.aws_caller_identity.current.account_id
   })
 }
 
