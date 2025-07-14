@@ -1,4 +1,4 @@
-name: AWS dev unhappy path check
+name: AWS prod unhappy path check
 
 on:
   pull_request:
@@ -47,9 +47,9 @@ jobs:
         run: ./scripts/aws/delete_s3_bucket.sh
       - name: Change slack channel to dev
         id: change-slack-channel-to-dev
-        run: ./scripts/common/change_slack_channel_to_dev.sh
+        run: ./scripts/common/change_slack_channel.sh
         env: 
-          DEV_ENV_VALUE: ${{ secrets.DEV_ENV_VALUE }}
+          ENV_VALUE: ${{ secrets.DEV_ENV_VALUE }}
           LAMBDA: "aws_verify-takeover"
       - name: Invoke lambda and send alert to Slack
         id: invoke-lambda-aws-subdomain-tool
@@ -58,9 +58,9 @@ jobs:
           LAMBDA: "aws_list-accounts"
       - name: Change slack channel to prod
         id: change-slack-channel-to-prod
-        run: ./scripts/common/change_slack_channel_to_prod.sh
+        run: ./scripts/common/change_slack_channel.sh
         env: 
-          PROD_ENV_VALUE: ${{ secrets.PROD_ENV_VALUE }}
+          ENV_VALUE: ${{ secrets.PROD_ENV_VALUE }}
           LAMBDA: "aws_verify-takeover"
       - name: Delete DNS zone and cleanup records
         id: delete-dns-zone
