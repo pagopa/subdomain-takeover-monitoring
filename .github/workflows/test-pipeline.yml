@@ -88,7 +88,7 @@ jobs:
           fi
 
           if [[ "$before" -gt "$after" ]]; then # before > after
-            echo "| $pkg | Coverave after < coverage before | $before vs $after"
+            echo "| $pkg | Coverave before > coverage after | $before vs $after"
             exit 1
           else
             echo "| $pkg | ${before}% | ${after}% |" >> diff_raw
