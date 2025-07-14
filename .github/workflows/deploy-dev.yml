@@ -48,6 +48,7 @@ jobs:
   deploy:
     runs-on: ubuntu-22.04
     needs: build
+    environment: dev
     steps:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@e1e17a757e536f70e52b5a12b2e8d1d1c60e04ef
