@@ -76,5 +76,7 @@ jobs:
           terraform_version: '1.9.3'
       - name: Run terraform plan
         run: |
+          ls
           cd infra
+          ls
           ./terraform.sh plan dev
