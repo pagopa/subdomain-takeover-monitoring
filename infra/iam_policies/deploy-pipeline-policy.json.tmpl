@@ -19,11 +19,13 @@
         "lambda:UpdateFunctionCode",
         "lambda:UpdateFunctionConfiguration",
         "lambda:GetFunctionConfiguration",
+        "lambda:AddPermission",
         "lambda:GetFunction",
         "lambda:ListVersionsByFunction",
         "lambda:GetFunctionCodeSigningConfig",
         "lambda:GetPolicy",
-        "lambda:PublishVersion"
+        "lambda:PublishVersion",
+        "lambda:RemovePermission"
       ],
       "Resource": [
         "arn:aws:lambda:${region}:${account_id}:function:aws_list-accounts-${env}",
@@ -71,7 +73,8 @@
       "Effect":"Allow",
       "Action":[
          "iam:GetPolicy",
-         "iam:GetPolicyVersion"
+         "iam:GetPolicyVersion",
+         "iam:ListPolicyVersions"
       ],
       "Resource":[
         "arn:aws:iam::${account_id}:policy/SubdomainHealtCheckPolicy-${env}",
