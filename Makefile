@@ -37,7 +37,7 @@ clean-aws-verify-takeover:
 	rm -f ${AWS_VERIFY_TAKEOVER_BINARY_NAME}
 
 build-azure-lambda: 
-	GOOS=${OS} GOARCH=${AWS_ARCH} CGO_ENABLED=${CGO_ENABLED} go build -o ${AZURE_LAMBDA_BINARY_NAME} -tags ${TAGS} ${AZURE_LAMBDA_PATH}
+	GOOS=${OS} GOARCH=${AWS_ARCH} CGO_ENABLED=${CGO_ENABLED} go build -o ${AZURE_LAMBDA_BINARY_NAME} -tags ${TAGS} ${AZURE_LAMBDA_PATH} && cp ./assets/img/queries/query_azure ./infra/tf_generated_azure/src/query
 	zip ./${AZURE_ARCHIVE_PATH} ./${AZURE_LAMBDA_BINARY_NAME}
 clean-azure-lambda:
 	go clean
