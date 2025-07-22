@@ -24,14 +24,19 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	slog.Debug("List of accounts belonging to PagoPA org correctly downloaded.")
+	data, err := json.MarshalIndent(accounts, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	slog.Debug("List of accounts belonging to PagoPA org correctly downloaded.", string(data))
 	//TODO: Write a file containing the account-ids not to be monitored and remove them from the downloaded list
 	sqsQueue := os.Getenv("SQS_LIST_ACCOUNTS")
 	err = writeAccountsToSQS(accounts, sqsQueue)
 	if err != nil {
 		return "", err
 	}
-	slog.Debug("List of accounts belonging to PagoPA org correctly wrote on SQS.")
+	slog.Debug("List of accounts belonging to PagoPA org correctly wrote on SQS.", string(data))
 	return "Execution completed successfully", nil
 }
 
