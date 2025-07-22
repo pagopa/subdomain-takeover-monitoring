@@ -35,8 +35,9 @@ resource "aws_iam_policy" "subdomain_health_check_policy" {
   description = "Policy to perform healt check of subdomain takeover monitoring tool in ${var.env} environment"
 
   policy = templatefile("iam_policies/health-check-policy.json.tmpl", {
-    region = var.aws_region
-    env    = var.env
+    region     = var.aws_region
+    env        = var.env
+    account-id = data.aws_caller_identity.current.account_id
   })
 }
 
