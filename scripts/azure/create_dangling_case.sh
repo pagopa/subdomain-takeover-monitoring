@@ -88,7 +88,7 @@ az network dns record-set cname show \
 
 
 echo "Waiting 3 minutes before deleting storage account..."
-sleep 180
+sleep 3m
 
 
 echo "Deleting Storage Account to create dangling CNAME..."
@@ -99,4 +99,4 @@ az storage account delete \
     --output none
 
 echo "Waiting 3 minutes before deleting storage account..."
-sleep 180
+sleep 3m

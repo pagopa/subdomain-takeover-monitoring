@@ -10,4 +10,4 @@ aws lambda invoke \
 out.json > /dev/null 2>&1
 echo "✅ Lambda invoked correctly."
 echo "Waiting for 5 minutes..."
-sleep 300
+sleep 5m

@@ -13,4 +13,4 @@ aws lambda update-function-configuration \
   --environment file://env.json > /dev/null 2>&1
 echo "✅ Slack channel changed correctly." 
 echo "Waiting 3 minutes"
-sleep 180
+sleep 3m
