@@ -29,14 +29,14 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 		return "", err
 	}
 
-	slog.Debug("List of accounts belonging to PagoPA org correctly downloaded.", string(data))
+	slog.Debug("List of accounts belonging to PagoPA org correctly downloaded.", "Accounts:", string(data))
 	//TODO: Write a file containing the account-ids not to be monitored and remove them from the downloaded list
 	sqsQueue := os.Getenv("SQS_LIST_ACCOUNTS")
 	err = writeAccountsToSQS(accounts, sqsQueue)
 	if err != nil {
 		return "", err
 	}
-	slog.Debug("List of accounts belonging to PagoPA org correctly wrote on SQS.", string(data))
+	slog.Debug("List of accounts belonging to PagoPA org correctly wrote on SQS.", "Accounts:", string(data))
 	return "Execution completed successfully", nil
 }
 
