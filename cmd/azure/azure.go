@@ -236,7 +236,10 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 }
 
 func main() {
-	logger.SetupLogger(slog.LevelInfo)
+	lvl := new(slog.LevelVar)
+	lvl.Set(logger.GetLogLevelFromEnv())
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
+	slog.SetDefault(logger)
 	slog.Debug("Starting Lambda")
 	lambda.Start(HandleRequest)
 }
