@@ -3,29 +3,26 @@ package logger
 import (
 	"log/slog"
 	"os"
-	"strings"
 )
 
-const log_level_env = "LOG_LEVEL"
+const LOG_LEVEL_ENV = "LOG_LEVEL"
 
-func GetLogLevelFromEnv() slog.Level {
-	levelStr := strings.ToLower(os.Getenv(log_level_env))
-	switch levelStr {
-	case "debug":
-		return slog.LevelDebug
-	case "info":
-		return slog.LevelInfo
-	case "warn", "warning":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
+func GetLogLevelFromEnv() (slog.Level, error) {
+	var level slog.Level
+	err := level.UnmarshalText([]byte(os.Getenv(LOG_LEVEL_ENV)))
+	if err != nil {
+		slog.Error(err.Error())
+		return 0, err
 	}
+	return level, nil
 }
 
-func SetLogger(level slog.Level) {
+func SetLogger() {
 	lvl := new(slog.LevelVar)
+	level, err := GetLogLevelFromEnv()
+	if err != nil {
+		return
+	}
 	lvl.Set(level)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
 	slog.SetDefault(logger)

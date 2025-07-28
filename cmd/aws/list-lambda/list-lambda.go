@@ -41,7 +41,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 }
 
 func main() {
-	logger.SetLogger(logger.GetLogLevelFromEnv())
+	logger.SetLogger()
 	slog.Debug("Starting Lambda...")
 	lambda.Start(HandleRequest)
 }
