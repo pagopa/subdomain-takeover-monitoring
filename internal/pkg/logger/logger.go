@@ -23,3 +23,10 @@ func GetLogLevelFromEnv() slog.Level {
 		return slog.LevelInfo
 	}
 }
+
+func SetLogger(level slog.Level) {
+	lvl := new(slog.LevelVar)
+	lvl.Set(level)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
+	slog.SetDefault(logger)
+}
