@@ -2,9 +2,9 @@ name: Deploy resources on prod environment
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [ "main" ]
-    types: closed
+  push:
+    branches:
+      - main
 
 permissions:
   id-token: write # This is required for requesting the JWT
