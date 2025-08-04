@@ -36,7 +36,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	slog.Debug("List of accounts belonging to PagoPA org correctly wrote on SQS.", "Accounts:", string(data))
+	slog.Debug("List of accounts belonging to PagoPA org correctly wrote on SQS.", "accounts ", string(data))
 	return "Execution completed successfully", nil
 }
 
