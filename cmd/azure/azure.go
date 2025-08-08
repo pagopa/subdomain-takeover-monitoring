@@ -27,6 +27,62 @@ type AFDProfile struct {
 	ResourceGroup string
 }
 
+// AFDProfile interface
+
+type AFDProfilesClient interface {
+	NewListPager(*armcdn.ProfilesClientListOptions) AFDProfilesPager
+}
+
+type AFDProfilesPager interface {
+	More() bool
+	NextPage(ctx context.Context) (armcdn.ProfilesClientListResponse, error)
+}
+
+type wrapperAFDProfilesClient struct {
+	client *armcdn.ProfilesClient
+}
+
+func (r *wrapperAFDProfilesClient) NewListPager(opt *armcdn.ProfilesClientListOptions) AFDProfilesPager {
+	return r.client.NewListPager(opt)
+}
+
+// AFDCustomDomains interface
+
+type AFDCustomDomainsClient interface {
+	NewListByProfilePager(resourceGroupName string, profileName string, options *armcdn.AFDCustomDomainsClientListByProfileOptions) AFDCustomDomainsPager
+}
+
+type AFDCustomDomainsPager interface {
+	More() bool
+	NextPage(ctx context.Context) (armcdn.AFDCustomDomainsClientListByProfileResponse, error)
+}
+
+type wrapperAFDCustomDomainsClient struct {
+	client *armcdn.AFDCustomDomainsClient
+}
+
+func (w *wrapperAFDCustomDomainsClient) NewListByProfilePager(resourceGroupName string, profileName string, options *armcdn.AFDCustomDomainsClientListByProfileOptions) AFDCustomDomainsPager {
+	return w.client.NewListByProfilePager(resourceGroupName, profileName, options)
+}
+
+// ClientFactory interface
+type ClientFactory interface {
+	NewAFDCustomDomainsClient() AFDCustomDomainsClient
+	NewAFDProfilesClient() AFDProfilesClient
+}
+
+type wrapperClientFactory struct {
+	client *armcdn.ClientFactory
+}
+
+func (w *wrapperClientFactory) NewAFDCustomDomainsClient() AFDCustomDomainsClient {
+	return &wrapperAFDCustomDomainsClient{client: w.client.NewAFDCustomDomainsClient()}
+}
+
+func (w *wrapperClientFactory) NewAFDProfilesClient() AFDProfilesClient {
+	return &wrapperAFDProfilesClient{client: w.client.NewProfilesClient()}
+}
+
 func getResourceGroupFromResourceID(resourceID string) (string, error) {
 	const resourceGroupsKey = "resourceGroups"
 	resourceComponents := strings.Split(resourceID, "/")
@@ -274,25 +330,24 @@ func getCustomDomains(allVulnerableResources map[string]struct{}, subscriptionID
 			return fmt.Errorf("failed to create clientFactory: %v", err)
 		}
 		// Get all AFD profiles in the current subscription
-		profiles, err := getAFDProfile(clientFactory, ctx)
+		client := &wrapperClientFactory{client: clientFactory}
+		profiles, err := getAFDProfile(client, ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get profile: %v", err)
 		}
 
 		slog.Debug("Number of AFD profiles found for subscription", "subscription", sub, "number", len(profiles))
 		// Get custom domains from all profiles
-		customdomains, err := getAFDCustomDomains(clientFactory, profiles, ctx)
+		customdomains, err := getAFDCustomDomains(client, profiles, ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get custom domains: %v", err)
 		}
 		// Add each custom domain to the vulnerable resources map
 		// Using empty struct{} as value for memory efficiency (set-like behavior)
 		for _, v := range customdomains {
-
 			allVulnerableResources[v] = struct{}{}
 		}
 	}
-
 	return nil
 }
 
@@ -304,7 +359,7 @@ func getCustomDomains(allVulnerableResources map[string]struct{}, subscriptionID
 //   - ctx: context for request cancellation and timeouts
 //
 // Returns slice of custom domain hostnames and any error encountered
-func getAFDCustomDomains(clientFactory *armcdn.ClientFactory, profiles []AFDProfile, ctx context.Context) ([]string, error) {
+func getAFDCustomDomains(clientFactory ClientFactory, profiles []AFDProfile, ctx context.Context) ([]string, error) {
 	var domains []string
 
 	for _, p := range profiles {
@@ -315,19 +370,14 @@ func getAFDCustomDomains(clientFactory *armcdn.ClientFactory, profiles []AFDProf
 				return nil, fmt.Errorf("failed to advance page in getAFDCustomDomains : %v", err)
 			}
 			// Extract hostname from each custom domain resource
-
 			for _, v := range page.Value {
 				// Check if properties and hostname are not nil before dereferencing
-
 				if v.Properties != nil && v.Properties.HostName != nil {
 					slog.Debug("Customdomains found:", "Resource name", p.Name, "domain", v.Properties.HostName)
 					domains = append(domains, *v.Properties.HostName)
 				}
-
 			}
-
 		}
-
 	}
 	return domains, nil
 }
@@ -339,8 +389,8 @@ func getAFDCustomDomains(clientFactory *armcdn.ClientFactory, profiles []AFDProf
 //   - ctx: context for request cancellation and timeouts
 //
 // Returns slice of AFDProfile structs containing profile name and resource group
-func getAFDProfile(clientFactory *armcdn.ClientFactory, ctx context.Context) ([]AFDProfile, error) {
-	pager := clientFactory.NewProfilesClient().NewListPager(nil)
+func getAFDProfile(client ClientFactory, ctx context.Context) ([]AFDProfile, error) {
+	pager := client.NewAFDProfilesClient().NewListPager(nil)
 	var profiles []AFDProfile
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
@@ -352,12 +402,12 @@ func getAFDProfile(clientFactory *armcdn.ClientFactory, ctx context.Context) ([]
 			if err != nil {
 				return nil, err
 			}
-			slog.Debug("Found profile", "name", v.Name, "rg", rg)
-			profiles = append(profiles, AFDProfile{Name: *v.Name, ResourceGroup: rg})
-
+			profiles = append(profiles, AFDProfile{
+				Name:          *v.Name,
+				ResourceGroup: rg,
+			})
 		}
 	}
-
 	return profiles, nil
 }
 
