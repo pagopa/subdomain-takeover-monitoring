@@ -211,8 +211,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	// where a classic CDN is migrated to Azure Front Door using the Microsoft migration tool.
 	// In such cases, the old CDN endpoint becomes a custom domain of the new Front Door,
 	// and a new AFD endpoint is created.
-	// This leads to a false positive in subdomain checks, as the CNAME still points to the
-	// old endpoint, now acting as a custom domain.
+	// This leads to a false positive in subdomain checks, as the CNAME still points to the old endpoint.
 	// Unfortunately, custom domains are not available in the Azure Resource Graph, so the
 	// information must be retrieved via the ARM API.
 
