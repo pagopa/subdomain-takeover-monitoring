@@ -11,6 +11,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
@@ -20,6 +21,67 @@ import (
 const (
 	AZURE_ORG = "azure"
 )
+
+type AFDProfile struct {
+	Name          string
+	ResourceGroup string
+}
+
+// AFDProfile interface
+
+type AFDProfilesClient interface {
+	NewListPager(*armcdn.ProfilesClientListOptions) AFDProfilesPager
+}
+
+type AFDProfilesPager interface {
+	More() bool
+	NextPage(ctx context.Context) (armcdn.ProfilesClientListResponse, error)
+}
+
+type wrapperAFDProfilesClient struct {
+	client *armcdn.ProfilesClient
+}
+
+func (r *wrapperAFDProfilesClient) NewListPager(opt *armcdn.ProfilesClientListOptions) AFDProfilesPager {
+	return r.client.NewListPager(opt)
+}
+
+// AFDCustomDomains interface
+
+type AFDCustomDomainsClient interface {
+	NewListByProfilePager(resourceGroupName string, profileName string, options *armcdn.AFDCustomDomainsClientListByProfileOptions) AFDCustomDomainsPager
+}
+
+type AFDCustomDomainsPager interface {
+	More() bool
+	NextPage(ctx context.Context) (armcdn.AFDCustomDomainsClientListByProfileResponse, error)
+}
+
+type wrapperAFDCustomDomainsClient struct {
+	client *armcdn.AFDCustomDomainsClient
+}
+
+func (w *wrapperAFDCustomDomainsClient) NewListByProfilePager(resourceGroupName string, profileName string, options *armcdn.AFDCustomDomainsClientListByProfileOptions) AFDCustomDomainsPager {
+	return w.client.NewListByProfilePager(resourceGroupName, profileName, options)
+}
+
+// ClientFactory interface
+type ClientFactory interface {
+	NewAFDCustomDomainsClient() AFDCustomDomainsClient
+	NewAFDProfilesClient() AFDProfilesClient
+}
+
+type wrapperClientFactory struct {
+	client *armcdn.ClientFactory
+}
+
+func (w *wrapperClientFactory) NewAFDCustomDomainsClient() AFDCustomDomainsClient {
+	return &wrapperAFDCustomDomainsClient{client: w.client.NewAFDCustomDomainsClient()}
+}
+
+func (w *wrapperClientFactory) NewAFDProfilesClient() AFDProfilesClient {
+	return &wrapperAFDProfilesClient{client: w.client.NewProfilesClient()}
+}
 
 func getResourceGroupFromResourceID(resourceID string) (string, error) {
 	const resourceGroupsKey = "resourceGroups"
@@ -200,6 +262,17 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 		return "", err
 	}
 	slog.Info("getAllAzureSubscriptions completed successfully")
+
+	// Retrieve custom domains from AFD resources. This is required to handle the edge case
+	// where a classic CDN is migrated to Azure Front Door using the Microsoft migration tool.
+	// In such cases, the old CDN endpoint becomes a custom domain of the new Front Door,
+	// and a new AFD endpoint is created.
+	// This leads to a false positive in subdomain checks, as the CNAME still points to the old endpoint.
+	// Unfortunately, custom domains are not available in the Azure Resource Graph, so the
+	// information must be retrieved via the ARM API.
+
+	getCustomDomains(allVulnerableResources, subscriptionIDs)
+
 	var detectedVulnerabilities []string
 	for _, subscriptionID := range subscriptionIDs {
 		clientFactory, err := armdns.NewClientFactory(subscriptionID, credential, nil)
@@ -233,6 +306,109 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	}
 	slog.Debug("Subdomain takeover monitoring tool sent the result of execution via Slack.")
 	return "HandleRequest completed successfully", nil
+}
+
+// getCustomDomains retrieves all custom domains from Azure Front Door (AFD) profiles
+// across multiple Azure subscriptions and adds them to the vulnerable resources map.
+// Parameters:
+//   - allVulnerableResources: map to store discovered custom domain names
+//   - subscriptionIDs: slice of Azure subscription IDs to scan
+//
+// Returns error if authentication, client creation, or API calls fail
+func getCustomDomains(allVulnerableResources map[string]struct{}, subscriptionIDs []string) error {
+	// Initialize Azure authentication using default credential chain
+	// (environment variables, managed identity, Azure CLI, etc.)
+	credential, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		return fmt.Errorf("failed to obtain a credential: %v", err)
+	}
+	ctx := context.Background()
+	// Iterate through each provided subscription
+	for _, sub := range subscriptionIDs {
+		clientFactory, err := armcdn.NewClientFactory(sub, credential, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create clientFactory: %v", err)
+		}
+		// Get all AFD profiles in the current subscription
+		client := &wrapperClientFactory{client: clientFactory}
+		profiles, err := getAFDProfile(client, ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get profile: %v", err)
+		}
+
+		slog.Debug("Number of AFD profiles found for subscription", "subscription", sub, "number", len(profiles))
+		// Get custom domains from all profiles
+		customdomains, err := getAFDCustomDomains(client, profiles, ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get custom domains: %v", err)
+		}
+		// Add each custom domain to the vulnerable resources map
+		// Using empty struct{} as value for memory efficiency (set-like behavior)
+		for _, v := range customdomains {
+			allVulnerableResources[v] = struct{}{}
+		}
+	}
+	return nil
+}
+
+// getAFDCustomDomains retrieves custom domain names from all provided AFD profiles.
+// Uses pagination to handle large numbers of custom domains.
+// Parameters:
+//   - clientFactory: Azure CDN client factory for API calls
+//   - profiles: slice of AFD profiles to query for custom domains
+//   - ctx: context for request cancellation and timeouts
+//
+// Returns slice of custom domain hostnames and any error encountered
+func getAFDCustomDomains(clientFactory ClientFactory, profiles []AFDProfile, ctx context.Context) ([]string, error) {
+	var domains []string
+
+	for _, p := range profiles {
+		pager := clientFactory.NewAFDCustomDomainsClient().NewListByProfilePager(p.ResourceGroup, p.Name, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to advance page in getAFDCustomDomains : %v", err)
+			}
+			// Extract hostname from each custom domain resource
+			for _, v := range page.Value {
+				// Check if properties and hostname are not nil before dereferencing
+				if v.Properties != nil && v.Properties.HostName != nil {
+					slog.Debug("Customdomains found:", "Resource name", p.Name, "domain", v.Properties.HostName)
+					domains = append(domains, *v.Properties.HostName)
+				}
+			}
+		}
+	}
+	return domains, nil
+}
+
+// getAFDProfile retrieves all Azure Front Door profiles from the current subscription.
+// Uses pagination to handle large numbers of profiles.
+// Parameters:
+//   - clientFactory: Azure CDN client factory for API calls
+//   - ctx: context for request cancellation and timeouts
+//
+// Returns slice of AFDProfile structs containing profile name and resource group
+func getAFDProfile(client ClientFactory, ctx context.Context) ([]AFDProfile, error) {
+	pager := client.NewAFDProfilesClient().NewListPager(nil)
+	var profiles []AFDProfile
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to advance page in getAFDProfile: %v", err)
+		}
+		for _, v := range page.Value {
+			rg, err := getResourceGroupFromResourceID(*v.ID)
+			if err != nil {
+				return nil, err
+			}
+			profiles = append(profiles, AFDProfile{
+				Name:          *v.Name,
+				ResourceGroup: rg,
+			})
+		}
+	}
+	return profiles, nil
 }
 
 func main() {
