@@ -412,7 +412,7 @@ func getAFDProfile(client ClientFactory, ctx context.Context) ([]AFDProfile, err
 }
 
 func main() {
-	logger.SetupLogger(slog.LevelInfo)
+	logger.SetLogger()
 	slog.Debug("Starting Lambda")
 	lambda.Start(HandleRequest)
 }

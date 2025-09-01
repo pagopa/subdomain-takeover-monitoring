@@ -68,7 +68,7 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 }
 
 func main() {
-	logger.SetupLogger(slog.LevelInfo)
+	logger.SetLogger()
 	slog.Debug("Starting Lambda...")
 	lambda.Start(HandleRequest)
 }
