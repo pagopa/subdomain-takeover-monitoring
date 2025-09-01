@@ -1,7 +1,7 @@
 name: Subdomain takeover monitoring tool health check on AWS production environment
 
 on:
-  push:
+  pull_request:
     branches:
       - main
   workflow_dispatch:
