@@ -17,7 +17,7 @@ The repository is organized into two main directories:
 
 ## Prerequisites
 
-Before you can deploy the solution, you'll need to build the Golang binaries. After cloning the repository, execute the following commands in your terminal:
+Before you can deploy this application, you'll need to build the Golang binaries. After cloning the repository, run the following commands in your terminal:
 
 ```bash
 # Build the Azure Lambda function binary and copy the query file
