@@ -39,6 +39,10 @@ data "aws_ssm_parameter" "channel_id_debug" {
   name = "CHANNEL_ID_DEBUG"
 }
 
+data "aws_ssm_parameter" "log_level" {
+  name = "LOG_LEVEL"
+}
+
 module "lambda_azure" {
   source = "git::https://github.com/terraform-aws-modules/terraform-aws-lambda.git?ref=b88a85627c84a4e9d1ad2a655455d10b386bc63f"
   #version = "7.7.0"

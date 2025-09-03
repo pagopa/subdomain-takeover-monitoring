@@ -36,7 +36,7 @@
         "lambda:GetFunctionConfiguration",
         "lambda:UpdateFunctionConfiguration"
       ],
-      "Resource": "arn:aws:lambda:${region}:637423468901:function:aws_verify-takeover-${env}"
+      "Resource": "arn:aws:lambda:${region}:${account-id}:function:aws_verify-takeover-${env}"
     },
     {
       "Sid": "LambdaInvoke",
@@ -44,7 +44,17 @@
       "Action": [
         "lambda:InvokeFunction"
       ],
-      "Resource": "arn:aws:lambda:${region}:637423468901:function:aws_list-accounts-${env}"
+      "Resource": "arn:aws:lambda:${region}:${account-id}:function:aws_list-accounts-${env}"
+    },
+    {
+      "Sid": "LmabdaConfigurationAzure",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunctionConfiguration",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:InvokeFunction"
+      ],
+      "Resource": "arn:aws:lambda:${region}:${account-id}:function:azure-lambda-${env}"
     }
   ]
 }
