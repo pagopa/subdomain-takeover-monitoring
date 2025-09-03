@@ -50,6 +50,7 @@ module "lambda_aws_list-accounts" {
     SQS_LIST_ACCOUNTS               = data.aws_ssm_parameter.sqs_list_accounts.value
     LIST_ACCOUNTS_ROLE              = data.aws_ssm_parameter.list_accounts_role.value
     LIST_ACCOUNTS_ROLE_SESSION_NAME = data.aws_ssm_parameter.list_accounts_role_session_name.value
+    LOG_LEVEL                       = data.aws_ssm_parameter.log_level.value
   }
 
   tags = var.tags
