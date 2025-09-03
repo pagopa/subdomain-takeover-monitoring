@@ -74,7 +74,8 @@
       "Action":[
          "iam:GetPolicy",
          "iam:GetPolicyVersion",
-         "iam:ListPolicyVersions"
+         "iam:ListPolicyVersions",
+         "iam:CreatePolicyVersion"
       ],
       "Resource":[
         "arn:aws:iam::${account_id}:policy/SubdomainHealtCheckPolicy-${env}",
@@ -96,22 +97,13 @@
         "arn:aws:iam::${account_id}:oidc-provider/token.actions.githubusercontent.com"
       ]
     },
-    {
-      "Effect":"Allow",
-      "Action":[
-         "ssm:GetParameter"
+   {
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter"
       ],
-      "Resource":[
-        "arn:aws:ssm:${region}:${account_id}:parameter/AZURE_TENANT_ID",
-        "arn:aws:ssm:${region}:${account_id}:parameter/AZURE_CLIENT_ID",
-        "arn:aws:ssm:${region}:${account_id}:parameter/AZURE_CLIENT_SECRET",
-        "arn:aws:ssm:${region}:${account_id}:parameter/SLACK_TOKEN",
-        "arn:aws:ssm:${region}:${account_id}:parameter/CHANNEL_ID",
-        "arn:aws:ssm:${region}:${account_id}:parameter/CHANNEL_ID_DEBUG",
-        "arn:aws:ssm:${region}:${account_id}:parameter/SQS_LIST_ACCOUNTS",
-        "arn:aws:ssm:${region}:${account_id}:parameter/LIST_ACCOUNTS_ROLE",
-        "arn:aws:ssm:${region}:${account_id}:parameter/LIST_ACCOUNTS_ROLE_SESSION_NAME",
-        "arn:aws:ssm:${region}:${account_id}:parameter/PRODSEC_READONLY_ROLE"
+      "Resource": [
+        "arn:aws:ssm:${region}:${account_id}:parameter/*"
       ]
     },
     {
