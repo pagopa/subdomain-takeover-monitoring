@@ -19,3 +19,8 @@ variable "github_repository" {
 variable "env" {
   type = string
 }
+
+variable "s3_tf_state_bucket" {
+  type        = string
+  description = "Bucket S3 containing tf-state"
+}
