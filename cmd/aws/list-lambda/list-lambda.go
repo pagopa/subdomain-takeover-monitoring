@@ -19,7 +19,7 @@ import (
 )
 
 func HandleRequest(ctx context.Context, event interface{}) (string, error) {
-	//Download list of accounts belonging to PagoPA org
+	//Download list of accounts belonging to org
 	accounts, err := listAwsOrganizationAccounts()
 	if err != nil {
 		return "", err
@@ -29,14 +29,14 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 		return "", err
 	}
 
-	slog.Debug("List of accounts belonging to PagoPA org correctly downloaded.", "accounts ", string(data))
+	slog.Debug("List of accounts belonging to org correctly downloaded.", "accounts ", string(data))
 	//TODO: Write a file containing the account-ids not to be monitored and remove them from the downloaded list
 	sqsQueue := os.Getenv("SQS_LIST_ACCOUNTS")
 	err = writeAccountsToSQS(accounts, sqsQueue)
 	if err != nil {
 		return "", err
 	}
-	slog.Debug("List of accounts belonging to PagoPA org correctly wrote on SQS.", "accounts ", string(data))
+	slog.Debug("List of accounts belonging to org correctly wrote on SQS.", "accounts ", string(data))
 	return "Execution completed successfully", nil
 }
 
