@@ -298,7 +298,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 			}
 		}
 	}
-	slog.Info("Subdomain takeover monitoring tool has correctly verified all Azure accounts belonging to PagoPA organization.")
+	slog.Info("Subdomain takeover monitoring tool has correctly verified all Azure accounts belonging to organization.")
 	err = slack.SendSlackNotification(detectedVulnerabilities, AZURE_ORG)
 
 	if err != nil {
