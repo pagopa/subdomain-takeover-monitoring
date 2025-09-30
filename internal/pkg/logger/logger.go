@@ -5,13 +5,25 @@ import (
 	"os"
 )
 
-func SetupLogger(level slog.Leveler) {
+const LOG_LEVEL_ENV = "LOG_LEVEL"
 
-	opts := &slog.HandlerOptions{
-		Level: level,
+func GetLogLevelFromEnv() (slog.Level, error) {
+	var level slog.Level
+	err := level.UnmarshalText([]byte(os.Getenv(LOG_LEVEL_ENV)))
+	if err != nil {
+		slog.Error(err.Error())
+		return 0, err
 	}
+	return level, nil
+}
 
-	handler := slog.NewJSONHandler(os.Stderr, opts)
-	logger := slog.New(handler)
+func SetLogger() {
+	lvl := new(slog.LevelVar)
+	level, err := GetLogLevelFromEnv()
+	if err != nil {
+		return
+	}
+	lvl.Set(level)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
 	slog.SetDefault(logger)
 }

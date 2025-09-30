@@ -54,7 +54,7 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 			return "", err
 		}
 	}
-	slog.Info("Subdomain takeover monitoring tool has correctly verified all AWS accounts belonging to PagoPA organization.")
+	slog.Info("Subdomain takeover monitoring tool has correctly verified all AWS accounts belonging to organization.")
 
 	//Send alert on Slack
 	err = slack.SendSlackNotification(vulnerableItemsOrg, AWS_ORG)
@@ -68,7 +68,7 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 }
 
 func main() {
-	logger.SetupLogger(slog.LevelInfo)
+	logger.SetLogger()
 	slog.Debug("Starting Lambda...")
 	lambda.Start(HandleRequest)
 }

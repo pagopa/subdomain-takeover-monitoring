@@ -1,19 +1,17 @@
-name: Subdomain takeover monitoring tool health check on AWS production environment
+name: AWS dev unhappy path check
 
 on:
   pull_request:
     branches:
-      - main
+      - develop
   workflow_dispatch:
-  schedule:
-    - cron: '0 7 * * 2' #Every tuesday at 7:00 UTC 
 jobs:
   setup:
     name: Setup environment
     runs-on: ubuntu-24.04
-    environment: prod
+    environment: dev
     env:
-      DEPLOY_ENV: prod
+      DEPLOY_ENV: dev
     permissions:
       id-token: write   # This is required for requesting the OIDC JWT
       contents: read    # This is required for actions/checkout Action
@@ -28,7 +26,7 @@ jobs:
           role-session-name: oidc-gha-assume-role-session
       - name: Make scripts executable
         id: make-scripts-executable
-        run: chmod +x scripts/aws/*.sh
+        run: chmod +x scripts/*/*.sh
       - name: Generate random DNS ZoneId and ZoneName
         id: generate-variables
         run: ./scripts/aws/generate_variables.sh
@@ -45,19 +43,11 @@ jobs:
       - name: Delete S3 bucket
         id: delete-s3-bucket
         run: ./scripts/aws/delete_s3_bucket.sh
-      - name: Change slack channel to dev
-        id: change-slack-channel-to-dev
-        run: ./scripts/aws/change_slack_channel_to_dev.sh
-        env: 
-          DEV_ENV_VALUE: ${{ secrets.DEV_ENV_VALUE }}
       - name: Invoke lambda and send alert to Slack
         id: invoke-lambda-aws-subdomain-tool
-        run: ./scripts/aws/invoke_lambda.sh
-      - name: Change slack channel to prod
-        id: change-slack-channel-to-prod
-        run: ./scripts/aws/change_slack_channel_to_prod.sh
+        run: ./scripts/common/invoke_lambda.sh 
         env: 
-          PROD_ENV_VALUE: ${{ secrets.PROD_ENV_VALUE }}
+          LAMBDA: "aws_list-accounts"
       - name: Delete DNS zone and cleanup records
         id: delete-dns-zone
         run: ./scripts/aws/delete_dns_zone.sh
