@@ -17,7 +17,7 @@ resource "aws_iam_role" "github_health_check_role" {
         Condition = {
           StringLike = {
             "token.actions.githubusercontent.com:sub" : [
-              "repo:${var.github_repository}:*"
+              "repo:${var.github_repository}:environment:${var.env}"
             ]
           },
           "ForAllValues:StringEquals" = {
