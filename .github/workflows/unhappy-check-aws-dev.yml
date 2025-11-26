@@ -1,7 +1,7 @@
 name: AWS dev unhappy path check
 
 on:
-  pull_request:
+  push:
     branches:
       - develop
   workflow_dispatch:
