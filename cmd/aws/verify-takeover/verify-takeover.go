@@ -81,43 +81,44 @@ func processMessage(record events.SQSMessage) ([]string, error) {
 	}
 	var vulnerableItemsOrg []string
 	for _, account := range *accounts {
-		vulnerableItemAccount, err := processAccount(&account)
+		vulnerableItemAccount, accountDNSRecord, err := processAccount(&account)
 		if err != nil {
 			//It does not return because the tool continue with other accounts.
 			slog.Error("Error in processing the account....", "Error", err.Error())
 		}
 		vulnerableItemsOrg = append(vulnerableItemsOrg, vulnerableItemAccount...)
+		slog.Info("Listing DNS Record for each account...", "Account: ", account.Name, "DNS Records: ", accountDNSRecord)
 	}
 	return vulnerableItemsOrg, nil
 }
 
-func processAccount(account *types.Account) ([]string, error) {
+func processAccount(account *types.Account) ([]string, map[string]*route53.ListResourceRecordSetsOutput, error) {
 	//Create clients for r53, s3, ebs queries
 	r53Client, s3Client, ebsClient, err := createClients(account.Id)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	slog.Debug("Clients created")
 	DNSZonesPoitingToAWSResource := make(map[string]*ExtractedResult)
 	AWSResources := make(map[string]bool)
 
 	//List potential vulnerable CNAME record belonging to the account read from the queue
-	err = listPotentialVulnerableDNSRecord(r53Client, DNSZonesPoitingToAWSResource)
+	accountDNSRecord, err := listPotentialVulnerableDNSRecord(r53Client, DNSZonesPoitingToAWSResource)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	slog.Debug("Listed potential vulnerable CNAME record")
 
 	//List S3 buckets belonging to the assumed account
 	err = listS3Buckets(s3Client, AWSResources)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	slog.Debug("Listed account's S3")
 	//List EBS environments belonging to the assumed account
 	err = listEBSEnvironment(ebsClient, AWSResources)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	slog.Debug(fmt.Sprintf("Resources vulnerable to subdomain takeover for account %s - %s:\n", *account.Name, *account.Id))
 	slog.Debug("Listed account's EBS")
@@ -133,7 +134,7 @@ func processAccount(account *types.Account) ([]string, error) {
 		slog.Debug(string(jsonResult))
 	}
 
-	return vulnerableItems, nil
+	return vulnerableItems, accountDNSRecord, nil
 }
 
 func createClients(accountID *string) (*route53.Client, *s3.Client, *elasticbeanstalk.Client, error) {
@@ -177,15 +178,16 @@ func createClients(accountID *string) (*route53.Client, *s3.Client, *elasticbean
 	return r53Client, s3Client, ebsClient, nil
 }
 
-func listPotentialVulnerableDNSRecord(r53Client *route53.Client, DNSZonesPoitingToAWSResource map[string]*ExtractedResult) error {
+func listPotentialVulnerableDNSRecord(r53Client *route53.Client, DNSZonesPoitingToAWSResource map[string]*ExtractedResult) (map[string]*route53.ListResourceRecordSetsOutput, error) {
 	//Pagination ok
 	pagination := true
 	var nextMarker *string
 	var resultDNS []route53Types.HostedZone
+	mapDNSZones := make(map[string]*route53.ListResourceRecordSetsOutput)
 	for pagination {
 		tempRes, err := r53Client.ListHostedZones(context.TODO(), &route53.ListHostedZonesInput{Marker: nextMarker})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		pagination = tempRes.IsTruncated
 		nextMarker = tempRes.NextMarker
@@ -202,15 +204,16 @@ func listPotentialVulnerableDNSRecord(r53Client *route53.Client, DNSZonesPoiting
 				StartRecordIdentifier: nextMarker,
 			})
 			if err != nil {
-				return err
+				return nil, err
 			}
+			mapDNSZones[*hostedZone.Name] = recordSests
 			pagination = recordSests.IsTruncated
 			nextMarker = recordSests.NextRecordIdentifier
 			tmpExtractedResultAWSResources = extractCNAMERecords(recordSests, hostedZone)
 			maps.Copy(DNSZonesPoitingToAWSResource, tmpExtractedResultAWSResources)
 		}
 	}
-	return nil
+	return mapDNSZones, nil
 }
 
 func checkPresenceAwsResource(record *route53Types.ResourceRecordSet, hostedZone route53Types.HostedZone, AWSResourceOutput map[string]*ExtractedResult) {
