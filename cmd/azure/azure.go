@@ -102,7 +102,6 @@ func containsAzureVulnerableResources(resource string) bool {
 	azureVulnerableDomains := []string{
 		"azure-api.net",
 		"azurecontainer.io",
-		"azurefd.net",
 		"azureedge.net",
 		"azurewebsites.net",
 		"blob.core.windows.net",
