@@ -211,7 +211,7 @@ func writeTestFile(filename, content string) error {
 
 // Benchmark tests
 func BenchmarkContainsAzureVulnerableResources(b *testing.B) {
-	testResource := "myapp.azurefd.net"
+	testResource := "myapp.azureedge.net"
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -222,9 +222,9 @@ func BenchmarkContainsAzureVulnerableResources(b *testing.B) {
 func BenchmarkIsVulnerableResource(b *testing.B) {
 	resources := make(map[string]struct{})
 	for i := 0; i < 1000; i++ {
-		resources[fmt.Sprintf("resource%d.azurefd.net", i)] = struct{}{}
+		resources[fmt.Sprintf("resource%d.azureedge.net", i)] = struct{}{}
 	}
-	testCname := "test.azurefd.net"
+	testCname := "test.azureedge.net"
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
