@@ -102,7 +102,6 @@ func containsAzureVulnerableResources(resource string) bool {
 	azureVulnerableDomains := []string{
 		"azure-api.net",
 		"azurecontainer.io",
-		"azureedge.net",
 		"azurewebsites.net",
 		"blob.core.windows.net",
 		"cloudapp.azure.com",
@@ -154,12 +153,12 @@ func getDnsCNAMERecords(resources map[string]struct{}, dnsZone armdns.Zone, subs
 				continue
 			}
 
-			if strings.Contains(cname, "azureedge.net") {
+			/*if strings.Contains(cname, "azureedge.net") {
 				splits := strings.Split(cname, ".")
 				if len(splits) >= 4 {
 					cname = strings.Join(splits[len(splits)-3:], ".")
 				}
-			}
+			}*/
 
 			if isVulnerableResource(resources, cname) {
 				vulnerableResources = append(vulnerableResources, fqdn+" -> "+cname)
