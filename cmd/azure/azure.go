@@ -153,13 +153,6 @@ func getDnsCNAMERecords(resources map[string]struct{}, dnsZone armdns.Zone, subs
 				continue
 			}
 
-			/*if strings.Contains(cname, "azureedge.net") {
-				splits := strings.Split(cname, ".")
-				if len(splits) >= 4 {
-					cname = strings.Join(splits[len(splits)-3:], ".")
-				}
-			}*/
-
 			if isVulnerableResource(resources, cname) {
 				vulnerableResources = append(vulnerableResources, fqdn+" -> "+cname)
 			}
