@@ -46,7 +46,6 @@ resources
 (
 	dnsEndpoint endswith 'azure-api.net', 'azure-api.net',
 	dnsEndpoint endswith 'azurecontainer.io', 'azurecontainer.io',
-	dnsEndpoint endswith 'azureedge.net', 'azureedge.net',
 	dnsEndpoint endswith 'azurewebsites.net', 'azurewebsites.net',
 	dnsEndpoint endswith 'blob.core.windows.net', 'blob.core.windows.net', 
 	dnsEndpoint endswith 'cloudapp.azure.com', 'cloudapp.azure.com',

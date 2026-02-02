@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -211,7 +210,7 @@ func writeTestFile(filename, content string) error {
 
 // Benchmark tests
 func BenchmarkContainsAzureVulnerableResources(b *testing.B) {
-	testResource := "myapp.azureedge.net"
+	testResource := "myapp.azurewebsites.net"
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -222,10 +221,9 @@ func BenchmarkContainsAzureVulnerableResources(b *testing.B) {
 func BenchmarkIsVulnerableResource(b *testing.B) {
 	resources := make(map[string]struct{})
 	for i := 0; i < 1000; i++ {
-		resources[fmt.Sprintf("resource%d.azureedge.net", i)] = struct{}{}
+		resources[fmt.Sprintf("resource%d.azurewebsites.net", i)] = struct{}{}
 	}
-	testCname := "test.azureedge.net"
-
+	testCname := "test.azurewebsites.net"
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		isVulnerableResource(resources, testCname)
@@ -264,48 +262,6 @@ func TestAFDProfile(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expectedName, tt.profile.Name)
 			assert.Equal(t, tt.expectedRG, tt.profile.ResourceGroup)
-		})
-	}
-}
-
-// Test for edge cases in domain processing
-func TestDomainProcessingEdgeCases(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "azureedge.net with subdomain",
-			input:    "cdn-endpoint.azureedge.net",
-			expected: "cdn-endpoint.azureedge.net",
-		},
-		{
-			name:     "azureedge.net with multiple subdomains",
-			input:    "sub.cdn-endpoint.azureedge.net",
-			expected: "cdn-endpoint.azureedge.net", // Should extract last 3 parts
-		},
-		{
-			name:     "Regular domain",
-			input:    "example.com",
-			expected: "example.com",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// This tests the logic that would be in getDnsCNAMERecords
-			// for processing azureedge.net domains
-			cname := strings.TrimRight(strings.TrimSpace(tt.input), ".")
-
-			if strings.Contains(cname, "azureedge.net") {
-				splits := strings.Split(cname, ".")
-				if len(splits) >= 4 {
-					cname = strings.Join(splits[len(splits)-3:], ".")
-				}
-			}
-
-			assert.Equal(t, tt.expected, cname)
 		})
 	}
 }
