@@ -55,7 +55,6 @@ For the Azure implementation, the Lambda function needs a **Service Principal** 
 "Microsoft.Cdn/profiles/endpoints/read",
 "Microsoft.Cdn/profiles/customdomains/read",
 "Microsoft.Cdn/profiles/endpoints/customdomains/read",
-"Microsoft.Cdn/profiles/afdendpoints/read",
 "Microsoft.Network/trafficManagerProfiles/read",
 "Microsoft.Network/publicIPAddresses/read",
 "Microsoft.ContainerInstance/containerGroups/read",
