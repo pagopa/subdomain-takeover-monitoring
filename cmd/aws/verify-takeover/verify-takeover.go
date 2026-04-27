@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -24,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53Types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3Types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
@@ -46,6 +50,11 @@ type ExtractedResult struct {
 }
 
 func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
+	if err := runUnhappyPathCheck(ctx); err != nil {
+		slog.Error("Unhappy path check failed", "Error", err.Error())
+		slack.SendUnhappyCheckError(AWS_ORG, err.Error())
+	}
+
 	var vulnerableItemsOrg []string
 	var err error
 	for _, record := range event.Records {
@@ -297,4 +306,199 @@ func verifyTakeover(DNSZonesPoitingToAWSResource map[string]*ExtractedResult, AW
 		}
 	}
 	return subdomainTakeover, vulnerableItems
+}
+
+func generateTestNames() (dnsZone string, bucketName string) {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	hexStr := hex.EncodeToString(b)
+	dnsZone = hexStr + ".net"
+	bucketName = "subdomain." + dnsZone
+	return dnsZone, bucketName
+}
+
+func emptyBucket(ctx context.Context, s3Client *s3.Client, bucketName string) {
+	paginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucketName),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			slog.Error("emptyBucket: failed to list objects", "Error", err.Error())
+			return
+		}
+		if len(page.Contents) == 0 {
+			break
+		}
+		var ids []s3Types.ObjectIdentifier
+		for _, obj := range page.Contents {
+			ids = append(ids, s3Types.ObjectIdentifier{Key: obj.Key})
+		}
+		_, err = s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(bucketName),
+			Delete: &s3Types.Delete{Objects: ids},
+		})
+		if err != nil {
+			slog.Error("emptyBucket: failed to delete objects", "Error", err.Error())
+			return
+		}
+	}
+}
+
+func setupDanglingCNAME(ctx context.Context, r53Client *route53.Client, s3Client *s3.Client, dnsZone string, bucketName string) (string, error) {
+	callerRefBytes := make([]byte, 6)
+	_, _ = rand.Read(callerRefBytes)
+	callerRef := hex.EncodeToString(callerRefBytes)
+
+	zoneResp, err := r53Client.CreateHostedZone(ctx, &route53.CreateHostedZoneInput{
+		Name:            aws.String(dnsZone),
+		CallerReference: aws.String(callerRef),
+	})
+	if err != nil {
+		return "", fmt.Errorf("setupDanglingCNAME: CreateHostedZone failed: %w", err)
+	}
+	hostedZoneId := *zoneResp.HostedZone.Id
+
+	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
+		Bucket: aws.String(bucketName),
+		CreateBucketConfiguration: &s3Types.CreateBucketConfiguration{
+			LocationConstraint: s3Types.BucketLocationConstraint(REGION),
+		},
+	})
+	if err != nil {
+		return hostedZoneId, fmt.Errorf("setupDanglingCNAME: CreateBucket failed: %w", err)
+	}
+
+	bucketFQDN := fmt.Sprintf("https://%s.s3.%s.amazonaws.com", bucketName, REGION)
+	_, err = r53Client.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
+		HostedZoneId: aws.String(hostedZoneId),
+		ChangeBatch: &route53Types.ChangeBatch{
+			Changes: []route53Types.Change{
+				{
+					Action: route53Types.ChangeActionCreate,
+					ResourceRecordSet: &route53Types.ResourceRecordSet{
+						Name: aws.String(bucketName),
+						Type: route53Types.RRTypeCname,
+						TTL:  aws.Int64(300),
+						ResourceRecords: []route53Types.ResourceRecord{
+							{Value: aws.String(bucketFQDN)},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return hostedZoneId, fmt.Errorf("setupDanglingCNAME: ChangeResourceRecordSets failed: %w", err)
+	}
+
+	emptyBucket(ctx, s3Client, bucketName)
+	_, err = s3Client.DeleteBucket(ctx, &s3.DeleteBucketInput{
+		Bucket: aws.String(bucketName),
+	})
+	if err != nil {
+		return hostedZoneId, fmt.Errorf("setupDanglingCNAME: DeleteBucket failed: %w", err)
+	}
+
+	return hostedZoneId, nil
+}
+
+func teardownDanglingCNAME(ctx context.Context, r53Client *route53.Client, s3Client *s3.Client, hostedZoneId string, bucketName string) {
+	if hostedZoneId != "" {
+		records, err := r53Client.ListResourceRecordSets(ctx, &route53.ListResourceRecordSetsInput{
+			HostedZoneId: aws.String(hostedZoneId),
+		})
+		if err != nil {
+			slog.Error("teardownDanglingCNAME: ListResourceRecordSets failed", "Error", err.Error())
+		} else {
+			var changes []route53Types.Change
+			for _, rec := range records.ResourceRecordSets {
+				if rec.Type != route53Types.RRTypeNs && rec.Type != route53Types.RRTypeSoa {
+					recCopy := rec
+					changes = append(changes, route53Types.Change{
+						Action:            route53Types.ChangeActionDelete,
+						ResourceRecordSet: &recCopy,
+					})
+				}
+			}
+			if len(changes) > 0 {
+				_, err = r53Client.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
+					HostedZoneId: aws.String(hostedZoneId),
+					ChangeBatch:  &route53Types.ChangeBatch{Changes: changes},
+				})
+				if err != nil {
+					slog.Error("teardownDanglingCNAME: ChangeResourceRecordSets failed", "Error", err.Error())
+				}
+			}
+		}
+		_, err = r53Client.DeleteHostedZone(ctx, &route53.DeleteHostedZoneInput{
+			Id: aws.String(hostedZoneId),
+		})
+		if err != nil {
+			slog.Error("teardownDanglingCNAME: DeleteHostedZone failed", "Error", err.Error())
+		}
+	}
+
+	emptyBucket(ctx, s3Client, bucketName)
+	_, err := s3Client.DeleteBucket(ctx, &s3.DeleteBucketInput{
+		Bucket: aws.String(bucketName),
+	})
+	// The bucket is intentionally deleted by setupDanglingCNAME to create the
+	// dangling state, so a NoSuchBucket error here is expected on the happy path.
+	var nsb *s3Types.NoSuchBucket
+	if err != nil && !errors.As(err, &nsb) {
+		slog.Error("teardownDanglingCNAME: DeleteBucket failed", "Error", err.Error())
+	}
+}
+
+func runUnhappyPathCheck(_ context.Context) error {
+	// Use a background context for the entire self-test so setup/scan are not
+	// cancelled if the Lambda handler context is close to its deadline.
+	ctx := context.Background()
+
+	dnsZone, bucketName := generateTestNames()
+	slog.Info("Unhappy path check: starting", "dnsZone", dnsZone)
+
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("runUnhappyPathCheck: LoadDefaultConfig failed: %w", err)
+	}
+
+	r53Client := route53.NewFromConfig(cfg)
+	s3Client := s3.NewFromConfig(cfg, func(o *s3.Options) { o.Region = REGION })
+	ebsClient := elasticbeanstalk.NewFromConfig(cfg)
+
+	hostedZoneId, err := setupDanglingCNAME(ctx, r53Client, s3Client, dnsZone, bucketName)
+	defer teardownDanglingCNAME(ctx, r53Client, s3Client, hostedZoneId, bucketName)
+	if err != nil {
+		return err
+	}
+
+	danglingMap := make(map[string]*ExtractedResult)
+	awsResources := make(map[string]bool)
+
+	_, err = listPotentialVulnerableDNSRecord(r53Client, danglingMap)
+	if err != nil {
+		return fmt.Errorf("runUnhappyPathCheck: listPotentialVulnerableDNSRecord failed: %w", err)
+	}
+	err = listS3Buckets(s3Client, awsResources)
+	if err != nil {
+		return fmt.Errorf("runUnhappyPathCheck: listS3Buckets failed: %w", err)
+	}
+	err = listEBSEnvironment(ebsClient, awsResources)
+	if err != nil {
+		return fmt.Errorf("runUnhappyPathCheck: listEBSEnvironment failed: %w", err)
+	}
+
+	_, vulnerableItems := verifyTakeover(danglingMap, awsResources)
+
+	var testZoneItems []string
+	for _, item := range vulnerableItems {
+		if strings.Contains(item, dnsZone) {
+			testZoneItems = append(testZoneItems, item)
+		}
+	}
+	slog.Info("Unhappy path check: detection complete", "vulnerableItems", len(testZoneItems))
+
+	return slack.SendUnhappyCheckNotification(testZoneItems, AWS_ORG, dnsZone)
 }

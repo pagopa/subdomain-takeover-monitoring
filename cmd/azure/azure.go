@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,12 +16,18 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
 const (
-	AZURE_ORG = "azure"
+	AZURE_ORG                    = "azure"
+	UNHAPPY_CHECK_RG_PREFIX      = "demo-rg-subdomain"
+	UNHAPPY_CHECK_LOCATION       = "italynorth"
+	UNHAPPY_CHECK_RECORD         = "www"
+	UNHAPPY_CHECK_STORAGE_PREFIX = "mystorage"
 )
 
 type AFDProfile struct {
@@ -201,21 +209,18 @@ func getAllAzureSubscriptions() ([]string, error) {
 	return subscriptionIDs, nil
 }
 
-func HandleRequest(ctx context.Context, event interface{}) (string, error) {
-	credential, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to obtain a credential: %v", err)
-	}
-	cntx := context.Background()
+// buildExistingAzureResources runs the Resource Graph query and AFD custom domain
+// enrichment to produce the set of known-existing Azure endpoints. A CNAME whose
+// target is absent from this map is considered dangling (vulnerable).
+func buildExistingAzureResources(ctx context.Context, credential *azidentity.DefaultAzureCredential) (map[string]struct{}, []string, error) {
 	resourceGraphClientFactory, err := armresourcegraph.NewClientFactory(credential, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create resource graph client: %v", err)
+		return nil, nil, fmt.Errorf("failed to create resource graph client: %v", err)
 	}
-	slog.Debug("Resource graph client correctly created")
 
 	query, err := readQueryFile("./query")
 	if err != nil {
-		return "", err
+		return nil, nil, err
 	}
 	resourceQueryRequest := armresourcegraph.QueryRequest{
 		Query: to.Ptr(query),
@@ -223,23 +228,21 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 			ResultFormat: to.Ptr(armresourcegraph.ResultFormatObjectArray),
 		},
 	}
-	allVulnerableResources := make(map[string]struct{})
+	existingResources := make(map[string]struct{})
 	for {
-		resourceQueryResult, err := resourceGraphClientFactory.NewClient().Resources(cntx, resourceQueryRequest, nil)
+		resourceQueryResult, err := resourceGraphClientFactory.NewClient().Resources(ctx, resourceQueryRequest, nil)
 		if err != nil {
-			return "", fmt.Errorf("resource query failed: %v", err)
+			return nil, nil, fmt.Errorf("resource query failed: %v", err)
 		}
-
 		if resourceItems, ok := resourceQueryResult.Data.([]interface{}); ok {
 			for _, resourceItem := range resourceItems {
 				if resourceMap, ok := resourceItem.(map[string]interface{}); ok {
 					if dnsEndpoint, ok := resourceMap["dnsEndpoint"].(string); ok {
-						allVulnerableResources[dnsEndpoint] = struct{}{}
+						existingResources[dnsEndpoint] = struct{}{}
 					}
 				}
 			}
 		}
-
 		if resourceQueryResult.QueryResponse.SkipToken == nil || *resourceQueryResult.QueryResponse.SkipToken == "" {
 			break
 		} else {
@@ -250,7 +253,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 
 	subscriptionIDs, err := getAllAzureSubscriptions()
 	if err != nil {
-		return "", err
+		return nil, nil, err
 	}
 	slog.Info("getAllAzureSubscriptions completed successfully")
 
@@ -261,8 +264,28 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	// This leads to a false positive in subdomain checks, as the CNAME still points to the old endpoint.
 	// Unfortunately, custom domains are not available in the Azure Resource Graph, so the
 	// information must be retrieved via the ARM API.
+	getCustomDomains(existingResources, subscriptionIDs)
 
-	getCustomDomains(allVulnerableResources, subscriptionIDs)
+	return existingResources, subscriptionIDs, nil
+}
+
+func HandleRequest(ctx context.Context, event interface{}) (string, error) {
+	credential, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to obtain a credential: %v", err)
+	}
+
+	cntx := context.Background()
+
+	if err := runUnhappyPathCheck(credential); err != nil {
+		slog.Error("Unhappy path check failed", "Error", err.Error())
+		slack.SendUnhappyCheckError(AZURE_ORG, err.Error())
+	}
+
+	allVulnerableResources, subscriptionIDs, err := buildExistingAzureResources(cntx, credential)
+	if err != nil {
+		return "", err
+	}
 
 	var detectedVulnerabilities []string
 	for _, subscriptionID := range subscriptionIDs {
@@ -281,6 +304,14 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 				return "", fmt.Errorf("dnsZonesPager failed to advance page: %v", err)
 			}
 			for _, dnsZone := range page.Value {
+				// Skip DNS zones that belong to self-test resource groups.
+				// Teardown is async so these may still be visible.
+				if dnsZone.ID != nil {
+					rg, _ := getResourceGroupFromResourceID(*dnsZone.ID)
+					if strings.HasPrefix(rg, UNHAPPY_CHECK_RG_PREFIX) {
+						continue
+					}
+				}
 				cnameRecords, err := getDnsCNAMERecords(allVulnerableResources, *dnsZone, subscriptionID)
 				if err != nil {
 					return "", err
@@ -406,4 +437,139 @@ func main() {
 	logger.SetLogger()
 	slog.Debug("Starting Lambda")
 	lambda.Start(HandleRequest)
+}
+
+func generateAzureTestNames() (rgName string, dnsZoneName string, storageAccountName string) {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	hexStr := hex.EncodeToString(b)
+	rgName = fmt.Sprintf("%s-%s", UNHAPPY_CHECK_RG_PREFIX, hexStr)
+	dnsZoneName = fmt.Sprintf("%s.net", hexStr)
+	raw := strings.ToLower(UNHAPPY_CHECK_STORAGE_PREFIX + hexStr)
+	if len(raw) > 24 {
+		raw = raw[:24]
+	}
+	storageAccountName = raw
+	return rgName, dnsZoneName, storageAccountName
+}
+
+func setupAzureDanglingCNAME(ctx context.Context, credential *azidentity.DefaultAzureCredential, subscriptionID string, rgName string, dnsZoneName string, storageAccountName string) (armdns.Zone, error) {
+	rgClient, err := armresources.NewResourceGroupsClient(subscriptionID, credential, nil)
+	if err != nil {
+		return armdns.Zone{}, fmt.Errorf("setupAzureDanglingCNAME: NewResourceGroupsClient failed: %w", err)
+	}
+	_, err = rgClient.CreateOrUpdate(ctx, rgName, armresources.ResourceGroup{
+		Location: to.Ptr(UNHAPPY_CHECK_LOCATION),
+	}, nil)
+	if err != nil {
+		return armdns.Zone{}, fmt.Errorf("setupAzureDanglingCNAME: CreateOrUpdate resource group failed: %w", err)
+	}
+
+	storageClient, err := armstorage.NewAccountsClient(subscriptionID, credential, nil)
+	if err != nil {
+		return armdns.Zone{}, fmt.Errorf("setupAzureDanglingCNAME: NewAccountsClient failed: %w", err)
+	}
+	poller, err := storageClient.BeginCreate(ctx, rgName, storageAccountName, armstorage.AccountCreateParameters{
+		SKU:      &armstorage.SKU{Name: to.Ptr(armstorage.SKUNameStandardLRS)},
+		Kind:     to.Ptr(armstorage.KindStorageV2),
+		Location: to.Ptr(UNHAPPY_CHECK_LOCATION),
+		Properties: &armstorage.AccountPropertiesCreateParameters{
+			AccessTier: to.Ptr(armstorage.AccessTierHot),
+		},
+	}, nil)
+	if err != nil {
+		return armdns.Zone{}, fmt.Errorf("setupAzureDanglingCNAME: BeginCreate storage account failed: %w", err)
+	}
+	_, err = poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		return armdns.Zone{}, fmt.Errorf("setupAzureDanglingCNAME: PollUntilDone storage account failed: %w", err)
+	}
+
+	dnsClientFactory, err := armdns.NewClientFactory(subscriptionID, credential, nil)
+	if err != nil {
+		return armdns.Zone{}, fmt.Errorf("setupAzureDanglingCNAME: NewClientFactory DNS failed: %w", err)
+	}
+	zoneResp, err := dnsClientFactory.NewZonesClient().CreateOrUpdate(ctx, rgName, dnsZoneName, armdns.Zone{
+		Location: to.Ptr("global"),
+	}, nil)
+	if err != nil {
+		return armdns.Zone{}, fmt.Errorf("setupAzureDanglingCNAME: CreateOrUpdate DNS zone failed: %w", err)
+	}
+
+	cname := fmt.Sprintf("%s.blob.core.windows.net", storageAccountName)
+	_, err = dnsClientFactory.NewRecordSetsClient().CreateOrUpdate(ctx, rgName, dnsZoneName, UNHAPPY_CHECK_RECORD, armdns.RecordTypeCNAME, armdns.RecordSet{
+		Properties: &armdns.RecordSetProperties{
+			TTL:         to.Ptr(int64(300)),
+			CnameRecord: &armdns.CnameRecord{Cname: to.Ptr(cname)},
+		},
+	}, nil)
+	if err != nil {
+		return armdns.Zone{}, fmt.Errorf("setupAzureDanglingCNAME: CreateOrUpdate CNAME record failed: %w", err)
+	}
+
+	_, err = storageClient.Delete(ctx, rgName, storageAccountName, nil)
+	if err != nil {
+		return armdns.Zone{}, fmt.Errorf("setupAzureDanglingCNAME: Delete storage account failed: %w", err)
+	}
+
+	return zoneResp.Zone, nil
+}
+
+func teardownAzureDanglingCNAME(credential *azidentity.DefaultAzureCredential, subscriptionID string, rgName string) {
+	// Use a fresh background context so cleanup is not cancelled if the handler context expires.
+	rgClient, err := armresources.NewResourceGroupsClient(subscriptionID, credential, nil)
+	if err != nil {
+		slog.Error("teardownAzureDanglingCNAME: NewResourceGroupsClient failed", "Error", err.Error())
+		return
+	}
+	_, err = rgClient.BeginDelete(context.Background(), rgName, nil)
+	if err != nil {
+		slog.Error("teardownAzureDanglingCNAME: BeginDelete resource group failed", "Error", err.Error())
+	}
+}
+
+func runUnhappyPathCheck(credential *azidentity.DefaultAzureCredential) error {
+	// Use a background context for the entire self-test so setup/scan are not
+	// cancelled if the Lambda handler context is close to its deadline. Setup
+	// can take 30-90s; cancellation mid-poll would leave half-created resources.
+	selfTestCtx := context.Background()
+
+	subscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID")
+	if subscriptionID == "" {
+		return fmt.Errorf("runUnhappyPathCheck: AZURE_SUBSCRIPTION_ID env var not set")
+	}
+
+	rgName, dnsZoneName, storageAccountName := generateAzureTestNames()
+	slog.Info("Unhappy path check: starting", "dnsZone", dnsZoneName, "rgName", rgName)
+
+	zone, err := setupAzureDanglingCNAME(selfTestCtx, credential, subscriptionID, rgName, dnsZoneName, storageAccountName)
+	defer teardownAzureDanglingCNAME(credential, subscriptionID, rgName)
+	if err != nil {
+		return err
+	}
+
+	// Take the resource snapshot AFTER setup (which creates and then deletes the
+	// storage account). This way the snapshot faithfully reflects the dangling
+	// state: the CNAME target is genuinely missing from the Resource Graph.
+	// Taking the snapshot before setup would make the test PASS trivially because
+	// the just-created storage account was never in the snapshot to begin with.
+	existingResources, _, err := buildExistingAzureResources(selfTestCtx, credential)
+	if err != nil {
+		return fmt.Errorf("runUnhappyPathCheck: buildExistingAzureResources failed: %w", err)
+	}
+
+	// Resource Graph is eventually consistent: the just-deleted test storage
+	// account may still appear in existingResources for several minutes. We KNOW
+	// it was deleted, so explicitly drop it from the snapshot to ensure the test
+	// reports the dangling state correctly regardless of Graph propagation lag.
+	testCNAME := fmt.Sprintf("%s.blob.core.windows.net", storageAccountName)
+	delete(existingResources, testCNAME)
+
+	cnameRecords, err := getDnsCNAMERecords(existingResources, zone, subscriptionID)
+	if err != nil {
+		return fmt.Errorf("runUnhappyPathCheck: getDnsCNAMERecords failed: %w", err)
+	}
+	slog.Info("Unhappy path check: detection complete", "vulnerableItems", len(cnameRecords))
+
+	return slack.SendUnhappyCheckNotification(cnameRecords, AZURE_ORG, dnsZoneName)
 }

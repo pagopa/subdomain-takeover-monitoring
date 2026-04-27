@@ -2,9 +2,7 @@ name: Azure dev unhappy path check
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - develop
+
 jobs:
   setup:
     name: Setup environment

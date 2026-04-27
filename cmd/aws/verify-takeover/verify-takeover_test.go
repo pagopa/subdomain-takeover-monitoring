@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -9,6 +10,28 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53Types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 )
+
+func TestGenerateTestNames(t *testing.T) {
+	dnsZone, bucketName := generateTestNames()
+
+	if !strings.HasSuffix(dnsZone, ".net") {
+		t.Errorf("dnsZone should end with .net, got %s", dnsZone)
+	}
+	// hex(6 bytes) = 12 chars + ".net" = 16 chars
+	if len(dnsZone) != 16 {
+		t.Errorf("dnsZone length should be 16, got %d (%s)", len(dnsZone), dnsZone)
+	}
+	expectedBucket := "subdomain." + dnsZone
+	if bucketName != expectedBucket {
+		t.Errorf("bucketName should be %s, got %s", expectedBucket, bucketName)
+	}
+
+	// Verify uniqueness across two calls
+	dnsZone2, _ := generateTestNames()
+	if dnsZone == dnsZone2 {
+		t.Errorf("generateTestNames should produce unique names, got same value twice: %s", dnsZone)
+	}
+}
 
 func TestVerifyTakeover(t *testing.T) {
 	tests := []struct {

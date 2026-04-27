@@ -102,3 +102,57 @@ resource "aws_iam_role_policy_attachment" "attach-prodsec-cross-account-verify-t
   role       = module.lambda_aws_verify-takeover.lambda_role_name
   policy_arn = aws_iam_policy.prodsec_cross_account_policy.arn
 }
+
+resource "aws_iam_policy" "unhappy_check_policy" {
+  name        = "UnhappyCheckPolicy-${var.env}"
+  description = "Allows verify-takeover Lambda to create and delete test Route53 zones and S3 buckets for the unhappy path self-test"
+  tags        = var.tags
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "route53:CreateHostedZone",
+          "route53:DeleteHostedZone",
+          "route53:ChangeResourceRecordSets",
+          "route53:ListResourceRecordSets",
+          "route53:GetHostedZone",
+          "route53:ListHostedZones"
+        ],
+        Resource = "*"
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "s3:CreateBucket",
+          "s3:DeleteBucket",
+          "s3:ListBucket",
+          "s3:ListAllMyBuckets",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:PutBucketAcl",
+          "s3:PutBucketPublicAccessBlock",
+          "s3:PutBucketOwnershipControls"
+        ],
+        Resource = [
+          "arn:aws:s3:::*",
+          "arn:aws:s3:::*/*"
+        ]
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "elasticbeanstalk:DescribeEnvironments"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "attach-unhappy-check-verify-takeover" {
+  role       = module.lambda_aws_verify-takeover.lambda_role_name
+  policy_arn = aws_iam_policy.unhappy_check_policy.arn
+}
