@@ -324,6 +324,10 @@ func emptyBucket(ctx context.Context, s3Client *s3.Client, bucketName string) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
+			var nsb *s3Types.NoSuchBucket
+			if errors.As(err, &nsb) {
+				return
+			}
 			slog.Error("emptyBucket: failed to list objects", "Error", err.Error())
 			return
 		}

@@ -264,7 +264,6 @@ func buildExistingAzureResources(ctx context.Context, credential *azidentity.Def
 	// This leads to a false positive in subdomain checks, as the CNAME still points to the old endpoint.
 	// Unfortunately, custom domains are not available in the Azure Resource Graph, so the
 	// information must be retrieved via the ARM API.
-	getCustomDomains(existingResources, subscriptionIDs)
 
 	if err := getCustomDomains(existingResources, subscriptionIDs); err != nil {
 		return nil, nil, fmt.Errorf("failed to get custom domains: %w", err)
