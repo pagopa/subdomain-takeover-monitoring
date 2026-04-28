@@ -89,6 +89,7 @@ func TestGetResourceGroupFromResourceID(t *testing.T) {
 		{"/subscriptions/123/resourceGroups/myResourceGroup/resources/456", "myResourceGroup", false},
 		{"/subscriptions/123/resourceGroup/myResourceGroup/resources/456", "", true},
 		{"/subscriptions/123/resourceGroups/myResourceGroup", "myResourceGroup", false},
+		{"/subscriptions/123/resourceGroups", "", true},
 	}
 
 	for _, tt := range tests {
