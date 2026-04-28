@@ -126,19 +126,21 @@ resource "aws_iam_policy" "unhappy_check_policy" {
       {
         Effect = "Allow",
         Action = [
+          "s3:ListAllMyBuckets"
+        ],
+        Resource = "*"
+      },
+      {
+        Effect = "Allow",
+        Action = [
           "s3:CreateBucket",
           "s3:DeleteBucket",
           "s3:ListBucket",
-          "s3:ListAllMyBuckets",
-          "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:PutBucketAcl",
-          "s3:PutBucketPublicAccessBlock",
-          "s3:PutBucketOwnershipControls"
+          "s3:DeleteObject"
         ],
         Resource = [
-          "arn:aws:s3:::*",
-          "arn:aws:s3:::*/*"
+          "arn:aws:s3:::subdomain.*",
+          "arn:aws:s3:::subdomain.*/*"
         ]
       },
       {

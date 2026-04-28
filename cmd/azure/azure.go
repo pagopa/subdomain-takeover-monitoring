@@ -266,6 +266,10 @@ func buildExistingAzureResources(ctx context.Context, credential *azidentity.Def
 	// information must be retrieved via the ARM API.
 	getCustomDomains(existingResources, subscriptionIDs)
 
+	if err := getCustomDomains(existingResources, subscriptionIDs); err != nil {
+		return nil, nil, fmt.Errorf("failed to get custom domains: %w", err)
+	}
+
 	return existingResources, subscriptionIDs, nil
 }
 
@@ -306,11 +310,8 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 			for _, dnsZone := range page.Value {
 				// Skip DNS zones that belong to self-test resource groups.
 				// Teardown is async so these may still be visible.
-				if dnsZone.ID != nil {
-					rg, _ := getResourceGroupFromResourceID(*dnsZone.ID)
-					if strings.HasPrefix(rg, UNHAPPY_CHECK_RG_PREFIX) {
-						continue
-					}
+				if isAzureSelfTestZone(*dnsZone) {
+					continue
 				}
 				cnameRecords, err := getDnsCNAMERecords(allVulnerableResources, *dnsZone, subscriptionID)
 				if err != nil {
@@ -453,6 +454,21 @@ func generateAzureTestNames() (rgName string, dnsZoneName string, storageAccount
 	return rgName, dnsZoneName, storageAccountName
 }
 
+func azureSelfTestCNAME(storageAccountName string) string {
+	return fmt.Sprintf("%s.blob.core.windows.net", storageAccountName)
+}
+
+func isAzureSelfTestZone(dnsZone armdns.Zone) bool {
+	if dnsZone.ID == nil {
+		return false
+	}
+	rg, err := getResourceGroupFromResourceID(*dnsZone.ID)
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(rg, UNHAPPY_CHECK_RG_PREFIX)
+}
+
 func setupAzureDanglingCNAME(ctx context.Context, credential *azidentity.DefaultAzureCredential, subscriptionID string, rgName string, dnsZoneName string, storageAccountName string) (armdns.Zone, error) {
 	rgClient, err := armresources.NewResourceGroupsClient(subscriptionID, credential, nil)
 	if err != nil {
@@ -496,7 +512,7 @@ func setupAzureDanglingCNAME(ctx context.Context, credential *azidentity.Default
 		return armdns.Zone{}, fmt.Errorf("setupAzureDanglingCNAME: CreateOrUpdate DNS zone failed: %w", err)
 	}
 
-	cname := fmt.Sprintf("%s.blob.core.windows.net", storageAccountName)
+	cname := azureSelfTestCNAME(storageAccountName)
 	_, err = dnsClientFactory.NewRecordSetsClient().CreateOrUpdate(ctx, rgName, dnsZoneName, UNHAPPY_CHECK_RECORD, armdns.RecordTypeCNAME, armdns.RecordSet{
 		Properties: &armdns.RecordSetProperties{
 			TTL:         to.Ptr(int64(300)),
@@ -562,7 +578,7 @@ func runUnhappyPathCheck(credential *azidentity.DefaultAzureCredential) error {
 	// account may still appear in existingResources for several minutes. We KNOW
 	// it was deleted, so explicitly drop it from the snapshot to ensure the test
 	// reports the dangling state correctly regardless of Graph propagation lag.
-	testCNAME := fmt.Sprintf("%s.blob.core.windows.net", storageAccountName)
+	testCNAME := azureSelfTestCNAME(storageAccountName)
 	delete(existingResources, testCNAME)
 
 	cnameRecords, err := getDnsCNAMERecords(existingResources, zone, subscriptionID)

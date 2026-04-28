@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v2"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -269,6 +271,75 @@ func TestAFDProfile(t *testing.T) {
 // Test constants
 func TestConstants(t *testing.T) {
 	assert.Equal(t, "azure", AZURE_ORG)
+}
+
+func TestGenerateAzureTestNames(t *testing.T) {
+	rgName, dnsZoneName, storageAccountName := generateAzureTestNames()
+
+	assert.True(t, strings.HasPrefix(rgName, UNHAPPY_CHECK_RG_PREFIX+"-"))
+	assert.True(t, strings.HasSuffix(dnsZoneName, ".net"))
+	assert.True(t, strings.HasPrefix(storageAccountName, UNHAPPY_CHECK_STORAGE_PREFIX))
+	assert.Len(t, dnsZoneName, 16)
+	assert.LessOrEqual(t, len(storageAccountName), 24)
+
+	_, dnsZoneName2, storageAccountName2 := generateAzureTestNames()
+	assert.NotEqual(t, dnsZoneName, dnsZoneName2)
+	assert.NotEqual(t, storageAccountName, storageAccountName2)
+}
+
+func TestAzureSelfTestCNAME(t *testing.T) {
+	assert.Equal(t, "mystorage123.blob.core.windows.net", azureSelfTestCNAME("mystorage123"))
+}
+
+func TestIsAzureSelfTestZone(t *testing.T) {
+	tests := []struct {
+		name     string
+		zone     armdns.Zone
+		expected bool
+	}{
+		{
+			name:     "self test zone",
+			zone:     armdns.Zone{ID: to.Ptr("/subscriptions/sub/resourceGroups/demo-rg-subdomain-123/providers/Microsoft.Network/dnsZones/test.net")},
+			expected: true,
+		},
+		{
+			name:     "regular zone",
+			zone:     armdns.Zone{ID: to.Ptr("/subscriptions/sub/resourceGroups/prod-rg/providers/Microsoft.Network/dnsZones/example.com")},
+			expected: false,
+		},
+		{
+			name:     "invalid resource id",
+			zone:     armdns.Zone{ID: to.Ptr("invalid")},
+			expected: false,
+		},
+		{
+			name:     "nil id",
+			zone:     armdns.Zone{},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, isAzureSelfTestZone(tt.zone))
+		})
+	}
+}
+
+func TestRunUnhappyPathCheckRequiresSubscriptionID(t *testing.T) {
+	originalValue, hadValue := os.LookupEnv("AZURE_SUBSCRIPTION_ID")
+	t.Cleanup(func() {
+		if hadValue {
+			_ = os.Setenv("AZURE_SUBSCRIPTION_ID", originalValue)
+			return
+		}
+		_ = os.Unsetenv("AZURE_SUBSCRIPTION_ID")
+	})
+
+	_ = os.Unsetenv("AZURE_SUBSCRIPTION_ID")
+	err := runUnhappyPathCheck(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "AZURE_SUBSCRIPTION_ID env var not set")
 }
 
 // Test for error handling patterns
