@@ -125,17 +125,8 @@ func containsAzureVulnerableResources(resource string) bool {
 	return false
 }
 
-func getDnsCNAMERecords(resources map[string]struct{}, dnsZone armdns.Zone, subscriptionID string) ([]string, error) {
+func getDnsCNAMERecords(ctx context.Context, resources map[string]struct{}, dnsZone armdns.Zone, clientFactory *armdns.ClientFactory) ([]string, error) {
 	var vulnerableResources []string
-	credential, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to obtain a credential: %v", err)
-	}
-	cntx := context.Background()
-	clientFactory, err := armdns.NewClientFactory(subscriptionID, credential, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create client: %v", err)
-	}
 	resourceGroup, err := getResourceGroupFromResourceID(*dnsZone.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get resource group: %v", err)
@@ -143,7 +134,7 @@ func getDnsCNAMERecords(resources map[string]struct{}, dnsZone armdns.Zone, subs
 
 	recordSetPager := clientFactory.NewRecordSetsClient().NewListByTypePager(resourceGroup, *dnsZone.Name, armdns.RecordTypeCNAME, &armdns.RecordSetsClientListByTypeOptions{})
 	for recordSetPager.More() {
-		page, err := recordSetPager.NextPage(cntx)
+		page, err := recordSetPager.NextPage(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("recordSetPager failed to advance page: %v", err)
 		}
@@ -278,14 +269,12 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 		return "", fmt.Errorf("failed to obtain a credential: %v", err)
 	}
 
-	cntx := context.Background()
-
 	if err := runUnhappyPathCheck(credential); err != nil {
 		slog.Error("Unhappy path check failed", "Error", err.Error())
 		slack.SendUnhappyCheckError(AZURE_ORG, err.Error())
 	}
 
-	allVulnerableResources, subscriptionIDs, err := buildExistingAzureResources(cntx, credential)
+	allVulnerableResources, subscriptionIDs, err := buildExistingAzureResources(ctx, credential)
 	if err != nil {
 		return "", err
 	}
@@ -299,7 +288,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 
 		dnsZonesPager := clientFactory.NewZonesClient().NewListPager(&armdns.ZonesClientListOptions{})
 		for dnsZonesPager.More() {
-			page, err := dnsZonesPager.NextPage(cntx)
+			page, err := dnsZonesPager.NextPage(ctx)
 			if err != nil {
 				if strings.Contains(err.Error(), "does not exist") {
 					break
@@ -312,7 +301,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 				if isAzureSelfTestZone(*dnsZone) {
 					continue
 				}
-				cnameRecords, err := getDnsCNAMERecords(allVulnerableResources, *dnsZone, subscriptionID)
+				cnameRecords, err := getDnsCNAMERecords(ctx, allVulnerableResources, *dnsZone, clientFactory)
 				if err != nil {
 					return "", err
 				}
@@ -580,7 +569,12 @@ func runUnhappyPathCheck(credential *azidentity.DefaultAzureCredential) error {
 	testCNAME := azureSelfTestCNAME(storageAccountName)
 	delete(existingResources, testCNAME)
 
-	cnameRecords, err := getDnsCNAMERecords(existingResources, zone, subscriptionID)
+	dnsClientFactory, err := armdns.NewClientFactory(subscriptionID, credential, nil)
+	if err != nil {
+		return fmt.Errorf("runUnhappyPathCheck: NewClientFactory failed: %w", err)
+	}
+
+	cnameRecords, err := getDnsCNAMERecords(selfTestCtx, existingResources, zone, dnsClientFactory)
 	if err != nil {
 		return fmt.Errorf("runUnhappyPathCheck: getDnsCNAMERecords failed: %w", err)
 	}
