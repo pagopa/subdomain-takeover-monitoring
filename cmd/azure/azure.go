@@ -274,7 +274,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 		slack.SendUnhappyCheckError(AZURE_ORG, err.Error())
 	}
 
-	allVulnerableResources, subscriptionIDs, err := buildExistingAzureResources(ctx, credential)
+	existingResources, subscriptionIDs, err := buildExistingAzureResources(ctx, credential)
 	if err != nil {
 		return "", err
 	}
@@ -301,7 +301,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 				if isAzureSelfTestZone(*dnsZone) {
 					continue
 				}
-				cnameRecords, err := getDnsCNAMERecords(ctx, allVulnerableResources, *dnsZone, clientFactory)
+				cnameRecords, err := getDnsCNAMERecords(ctx, existingResources, *dnsZone, clientFactory)
 				if err != nil {
 					return "", err
 				}
@@ -320,13 +320,13 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 }
 
 // getCustomDomains retrieves all custom domains from Azure Front Door (AFD) profiles
-// across multiple Azure subscriptions and adds them to the vulnerable resources map.
+// across multiple Azure subscriptions and adds them to the existing resources map.
 // Parameters:
-//   - allVulnerableResources: map to store discovered custom domain names
+//   - existingResources: map to store discovered custom domain names
 //   - subscriptionIDs: slice of Azure subscription IDs to scan
 //
 // Returns error if authentication, client creation, or API calls fail
-func getCustomDomains(allVulnerableResources map[string]struct{}, subscriptionIDs []string) error {
+func getCustomDomains(existingResources map[string]struct{}, subscriptionIDs []string) error {
 	// Initialize Azure authentication using default credential chain
 	// (environment variables, managed identity, Azure CLI, etc.)
 	credential, err := azidentity.NewDefaultAzureCredential(nil)
@@ -353,10 +353,10 @@ func getCustomDomains(allVulnerableResources map[string]struct{}, subscriptionID
 		if err != nil {
 			return fmt.Errorf("failed to get custom domains: %v", err)
 		}
-		// Add each custom domain to the vulnerable resources map
+		// Add each custom domain to the existing resources map
 		// Using empty struct{} as value for memory efficiency (set-like behavior)
 		for _, v := range customdomains {
-			allVulnerableResources[v] = struct{}{}
+			existingResources[v] = struct{}{}
 		}
 	}
 	return nil
