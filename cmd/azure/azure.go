@@ -544,7 +544,6 @@ func runUnhappyPathCheck(credential *azidentity.DefaultAzureCredential) error {
 	}
 
 	rgName, dnsZoneName, storageAccountName := generateAzureTestNames()
-	slog.Info("Unhappy path check: starting", "dnsZone", dnsZoneName, "rgName", rgName)
 
 	zone, err := setupAzureDanglingCNAME(selfTestCtx, credential, subscriptionID, rgName, dnsZoneName, storageAccountName)
 	defer teardownAzureDanglingCNAME(credential, subscriptionID, rgName)
@@ -578,7 +577,10 @@ func runUnhappyPathCheck(credential *azidentity.DefaultAzureCredential) error {
 	if err != nil {
 		return fmt.Errorf("runUnhappyPathCheck: getDnsCNAMERecords failed: %w", err)
 	}
-	slog.Info("Unhappy path check: detection complete", "vulnerableItems", len(cnameRecords))
+
+	if len(cnameRecords) == 0 {
+		slog.Error("Unhappy path check: failed to detect expected dangling record", "dnsZone", dnsZoneName, "rgName", rgName)
+	}
 
 	return slack.SendUnhappyCheckNotification(cnameRecords, AZURE_ORG, dnsZoneName)
 }
