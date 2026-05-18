@@ -449,8 +449,7 @@ func teardownDanglingCNAME(ctx context.Context, r53Client *route53.Client, s3Cli
 	})
 	// The bucket is intentionally deleted by setupDanglingCNAME to create the
 	// dangling state, so a NoSuchBucket error here is expected on the happy path.
-	var nsb *s3Types.NoSuchBucket
-	if err != nil && !errors.As(err, &nsb) {
+	if err != nil && !strings.Contains(err.Error(), "NoSuchBucket") {
 		slog.Error("teardownDanglingCNAME: DeleteBucket failed", "Error", err.Error())
 	}
 }
