@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"testing"
@@ -16,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Mock implementations for testing
+// Mock implementations
 
 type mockAFDProfilesPager struct {
 	mock.Mock
@@ -78,126 +79,142 @@ func (m *mockClientFactory) NewAFDProfilesClient() AFDProfilesClient {
 	return args.Get(0).(AFDProfilesClient)
 }
 
-// Test getResourceGroupFromID
 func TestGetResourceGroupFromResourceID(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
+		name       string
 		resourceID string
 		want       string
 		wantErr    bool
 	}{
-		{"", "", true},
-		{"/subscriptions/123/resourceGroups/myResourceGroup/resources/456", "myResourceGroup", false},
-		{"/subscriptions/123/resourceGroup/myResourceGroup/resources/456", "", true},
-		{"/subscriptions/123/resourceGroups/myResourceGroup", "myResourceGroup", false},
-		{"/subscriptions/123/resourceGroups", "", true},
+		{name: "empty string", resourceID: "", want: "", wantErr: true},
+		{name: "valid resource ID", resourceID: "/subscriptions/123/resourceGroups/myResourceGroup/resources/456", want: "myResourceGroup", wantErr: false},
+		{name: "missing resourceGroups segment", resourceID: "/subscriptions/123/resourceGroup/myResourceGroup/resources/456", want: "", wantErr: true},
+		{name: "resourceGroups at end", resourceID: "/subscriptions/123/resourceGroups/myResourceGroup", want: "myResourceGroup", wantErr: false},
+		{name: "resourceGroups with no value", resourceID: "/subscriptions/123/resourceGroups", want: "", wantErr: true},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.resourceID, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := getResourceGroupFromResourceID(tt.resourceID)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("getResourceGroupFromID()= %v, error = %v, wantErr %v", got, err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
-			if got != tt.want {
-				t.Errorf("getResourceGroupFromID() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
-// Test Lookup
 func TestIsVulnerableResource(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		resources map[string]struct{}
 		cname     string
-		expected  bool
+		want      bool
 	}{
 		{
-			name:      "existing cname",
+			name:      "existing cname - not vulnerable",
 			resources: map[string]struct{}{"example.com": {}, "test.com": {}},
 			cname:     "example.com",
-			expected:  false,
+			want:      false,
 		},
 		{
-			name:      "non-existing cname",
+			name:      "non-existing cname - vulnerable",
 			resources: map[string]struct{}{"example.com": {}, "test.com": {}},
 			cname:     "notfound.com",
-			expected:  true,
+			want:      true,
 		},
 		{
-			name:      "empty resources",
+			name:      "empty resources - vulnerable",
 			resources: map[string]struct{}{},
 			cname:     "example.com",
-			expected:  true,
+			want:      true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isVulnerableResource(tt.resources, tt.cname)
-			if result != tt.expected {
-				t.Errorf("Lookup(%v, %s) = %v; expected %v", tt.resources, tt.cname, result, tt.expected)
-			}
+			t.Parallel()
+
+			got := isVulnerableResource(tt.resources, tt.cname)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
-// Test containsAzureVulnerableResources
 func TestContainsAzureVulnerableResources(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
+		name     string
 		resource string
-		expected bool
+		want     bool
 	}{
-		{"example.azurewebsites.net", true},
-		{"example.com", false},
-		{"test.trafficmanager.net", true},
+		{name: "azurewebsites.net is vulnerable", resource: "example.azurewebsites.net", want: true},
+		{name: "plain domain is not vulnerable", resource: "example.com", want: false},
+		{name: "trafficmanager.net is vulnerable", resource: "test.trafficmanager.net", want: true},
+		{name: "blob.core.windows.net is vulnerable", resource: "account.blob.core.windows.net", want: true},
+		{name: "cloudapp.azure.com is vulnerable", resource: "app.cloudapp.azure.com", want: true},
+		{name: "azure-api.net is vulnerable", resource: "api.azure-api.net", want: true},
+		{name: "azurecontainer.io is vulnerable", resource: "container.azurecontainer.io", want: true},
+		{name: "cloudapp.net is vulnerable", resource: "app.cloudapp.net", want: true},
 	}
 
-	for _, test := range tests {
-		result := containsAzureVulnerableResources(test.resource)
-		if result != test.expected {
-			t.Fatalf("expected %v, got %v for resource %s", test.expected, result, test.resource)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := containsAzureVulnerableResources(tt.resource)
+			assert.Equal(t, tt.want, got)
+		})
 	}
 }
+
 func TestReadQueryFile(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name        string
-		setupFile   func(t *testing.T) string
-		expectedErr bool
+		name    string
+		setup   func(t *testing.T) string
+		wantErr string
 	}{
 		{
-			name: "Valid file",
-			setupFile: func(t *testing.T) string {
-				// Create a temporary file
-				tmpfile := t.TempDir() + "/query.txt"
-				content := "resources | where type == 'Microsoft.Cdn/profiles'"
-				err := writeTestFile(tmpfile, content)
-				require.NoError(t, err)
-				return tmpfile
+			name: "valid file",
+			setup: func(t *testing.T) string {
+				t.Helper()
+				path := t.TempDir() + "/query.txt"
+				require.NoError(t, os.WriteFile(path, []byte("resources | where type == 'Microsoft.Cdn/profiles'"), 0644))
+				return path
 			},
-			expectedErr: false,
 		},
 		{
-			name: "Non-existent file",
-			setupFile: func(t *testing.T) string {
+			name: "non-existent file",
+			setup: func(t *testing.T) string {
+				t.Helper()
 				return "/non/existent/file.txt"
 			},
-			expectedErr: true,
+			wantErr: "failed to read the file",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filePath := tt.setupFile(t)
+			t.Parallel()
 
-			result, err := readQueryFile(filePath)
+			path := tt.setup(t)
+			result, err := readQueryFile(path)
 
-			if tt.expectedErr {
+			if tt.wantErr != "" {
 				assert.Error(t, err)
 				assert.Empty(t, result)
-				assert.Contains(t, err.Error(), "failed to read the file")
+				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				assert.NoError(t, err)
 				assert.NotEmpty(t, result)
@@ -206,123 +223,124 @@ func TestReadQueryFile(t *testing.T) {
 	}
 }
 
-// Helper function to write test files
-func writeTestFile(filename, content string) error {
-	return os.WriteFile(filename, []byte(content), 0644)
-}
-
-// Benchmark tests
-func BenchmarkContainsAzureVulnerableResources(b *testing.B) {
-	testResource := "myapp.azurewebsites.net"
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		containsAzureVulnerableResources(testResource)
-	}
-}
-
-func BenchmarkIsVulnerableResource(b *testing.B) {
-	resources := make(map[string]struct{})
-	for i := 0; i < 1000; i++ {
-		resources[fmt.Sprintf("resource%d.azurewebsites.net", i)] = struct{}{}
-	}
-	testCname := "test.azurewebsites.net"
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		isVulnerableResource(resources, testCname)
-	}
-}
-
-// Table-driven test for AFDProfile struct
 func TestAFDProfile(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name         string
-		profile      AFDProfile
-		expectedName string
-		expectedRG   string
+		name   string
+		input  AFDProfile
+		wantRG string
 	}{
-		{
-			name: "Valid AFDProfile",
-			profile: AFDProfile{
-				Name:          "test-profile",
-				ResourceGroup: "test-rg",
-			},
-			expectedName: "test-profile",
-			expectedRG:   "test-rg",
-		},
-		{
-			name: "Empty AFDProfile",
-			profile: AFDProfile{
-				Name:          "",
-				ResourceGroup: "",
-			},
-			expectedName: "",
-			expectedRG:   "",
-		},
+		{name: "valid profile", input: AFDProfile{Name: "test-profile", ResourceGroup: "test-rg"}, wantRG: "test-rg"},
+		{name: "empty profile", input: AFDProfile{}, wantRG: ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expectedName, tt.profile.Name)
-			assert.Equal(t, tt.expectedRG, tt.profile.ResourceGroup)
+			t.Parallel()
+
+			assert.Equal(t, tt.name == "valid profile", tt.input.Name == "test-profile")
+			assert.Equal(t, tt.wantRG, tt.input.ResourceGroup)
 		})
 	}
 }
 
-// Test constants
-func TestConstants(t *testing.T) {
-	assert.Equal(t, "azure", AZURE_ORG)
+func TestGenerateAzureTestNames(t *testing.T) {
+	t.Parallel()
+
+	rgName, dnsZoneName, storageAccountName, err := generateAzureTestNames()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if !strings.HasPrefix(rgName, UNHAPPY_CHECK_RG_PREFIX+"-") {
+		t.Errorf("rgName should have prefix %s-, got %s", UNHAPPY_CHECK_RG_PREFIX, rgName)
+	}
+	if !strings.HasSuffix(dnsZoneName, ".net") {
+		t.Errorf("dnsZoneName should end with .net, got %s", dnsZoneName)
+	}
+	if len(dnsZoneName) != 16 {
+		t.Errorf("dnsZoneName length should be 16, got %d (%s)", len(dnsZoneName), dnsZoneName)
+	}
+	if !strings.HasPrefix(storageAccountName, UNHAPPY_CHECK_STORAGE_PREFIX) {
+		t.Errorf("storageAccountName should have prefix %s, got %s", UNHAPPY_CHECK_STORAGE_PREFIX, storageAccountName)
+	}
+	if len(storageAccountName) > 24 {
+		t.Errorf("storageAccountName length should be <= 24, got %d (%s)", len(storageAccountName), storageAccountName)
+	}
 }
 
-func TestGenerateAzureTestNames(t *testing.T) {
-	rgName, dnsZoneName, storageAccountName := generateAzureTestNames()
+func TestGenerateAzureTestNamesUniqueness(t *testing.T) {
+	t.Parallel()
 
-	assert.True(t, strings.HasPrefix(rgName, UNHAPPY_CHECK_RG_PREFIX+"-"))
-	assert.True(t, strings.HasSuffix(dnsZoneName, ".net"))
-	assert.True(t, strings.HasPrefix(storageAccountName, UNHAPPY_CHECK_STORAGE_PREFIX))
-	assert.Len(t, dnsZoneName, 16)
-	assert.LessOrEqual(t, len(storageAccountName), 24)
-
-	_, dnsZoneName2, storageAccountName2 := generateAzureTestNames()
-	assert.NotEqual(t, dnsZoneName, dnsZoneName2)
-	assert.NotEqual(t, storageAccountName, storageAccountName2)
+	_, dns1, storage1, err := generateAzureTestNames()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	_, dns2, storage2, err := generateAzureTestNames()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	assert.NotEqual(t, dns1, dns2)
+	assert.NotEqual(t, storage1, storage2)
 }
 
 func TestAzureSelfTestCNAME(t *testing.T) {
-	assert.Equal(t, "mystorage123.blob.core.windows.net", azureSelfTestCNAME("mystorage123"))
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		storageAccount string
+		want           string
+	}{
+		{name: "standard name", storageAccount: "mystorage123", want: "mystorage123.blob.core.windows.net"},
+		{name: "short name", storageAccount: "st", want: "st.blob.core.windows.net"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, azureSelfTestCNAME(tt.storageAccount))
+		})
+	}
 }
 
 func TestIsAzureSelfTestZone(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name     string
-		zone     armdns.Zone
-		expected bool
+		name string
+		zone armdns.Zone
+		want bool
 	}{
 		{
-			name:     "self test zone",
-			zone:     armdns.Zone{ID: to.Ptr("/subscriptions/sub/resourceGroups/demo-rg-subdomain-123/providers/Microsoft.Network/dnsZones/test.net")},
-			expected: true,
+			name: "self test zone",
+			zone: armdns.Zone{ID: to.Ptr("/subscriptions/sub/resourceGroups/demo-rg-subdomain-123/providers/Microsoft.Network/dnsZones/test.net")},
+			want: true,
 		},
 		{
-			name:     "regular zone",
-			zone:     armdns.Zone{ID: to.Ptr("/subscriptions/sub/resourceGroups/prod-rg/providers/Microsoft.Network/dnsZones/example.com")},
-			expected: false,
+			name: "regular zone",
+			zone: armdns.Zone{ID: to.Ptr("/subscriptions/sub/resourceGroups/prod-rg/providers/Microsoft.Network/dnsZones/example.com")},
+			want: false,
 		},
 		{
-			name:     "invalid resource id",
-			zone:     armdns.Zone{ID: to.Ptr("invalid")},
-			expected: false,
+			name: "invalid resource id",
+			zone: armdns.Zone{ID: to.Ptr("invalid")},
+			want: false,
 		},
 		{
-			name:     "nil id",
-			zone:     armdns.Zone{},
-			expected: false,
+			name: "nil id",
+			zone: armdns.Zone{},
+			want: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, isAzureSelfTestZone(tt.zone))
+			t.Parallel()
+
+			assert.Equal(t, tt.want, isAzureSelfTestZone(tt.zone))
 		})
 	}
 }
@@ -343,196 +361,166 @@ func TestRunUnhappyPathCheckRequiresSubscriptionID(t *testing.T) {
 	assert.Contains(t, err.Error(), "AZURE_SUBSCRIPTION_ID env var not set")
 }
 
-// Test for error handling patterns
 func TestErrorHandlingPatterns(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name        string
-		errorFunc   func() error
-		expectedMsg string
+		name    string
+		fn      func() error
+		wantMsg string
 	}{
 		{
-			name: "Resource group parsing error",
-			errorFunc: func() error {
+			name: "resource group parsing error",
+			fn: func() error {
 				_, err := getResourceGroupFromResourceID("invalid-id")
 				return err
 			},
-			expectedMsg: "resource group key not found",
+			wantMsg: "resource group key not found",
 		},
 		{
-			name: "File reading error",
-			errorFunc: func() error {
+			name: "file reading error",
+			fn: func() error {
 				_, err := readQueryFile("/non/existent/file")
 				return err
 			},
-			expectedMsg: "failed to read the file",
+			wantMsg: "failed to read the file",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.errorFunc()
+			t.Parallel()
+
+			err := tt.fn()
 			assert.Error(t, err)
-			assert.Contains(t, err.Error(), tt.expectedMsg)
+			assert.Contains(t, err.Error(), tt.wantMsg)
 		})
 	}
 }
 
-// Test for getAFDProfile function
 func TestGetAFDProfile(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name           string
-		setupMocks     func() *mockClientFactory
-		expectedResult []AFDProfile
-		expectedError  string
+		name       string
+		setupMocks func() *mockClientFactory
+		want       []AFDProfile
+		wantErr    string
 	}{
 		{
 			name: "successful retrieval of profiles",
 			setupMocks: func() *mockClientFactory {
-				mockFactory := &mockClientFactory{}
-				mockProfilesClient := &mockAFDProfilesClient{}
-				mockPager := &mockAFDProfilesPager{}
+				factory := &mockClientFactory{}
+				profilesClient := &mockAFDProfilesClient{}
+				pager := &mockAFDProfilesPager{}
 
-				// Setup mock responses
 				profiles := []*armcdn.Profile{
-					{
-						ID:   to.Ptr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Cdn/profiles/profile1"),
-						Name: to.Ptr("profile1"),
-					},
-					{
-						ID:   to.Ptr("/subscriptions/sub1/resourceGroups/rg2/providers/Microsoft.Cdn/profiles/profile2"),
-						Name: to.Ptr("profile2"),
-					},
+					{ID: to.Ptr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Cdn/profiles/profile1"), Name: to.Ptr("profile1")},
+					{ID: to.Ptr("/subscriptions/sub1/resourceGroups/rg2/providers/Microsoft.Cdn/profiles/profile2"), Name: to.Ptr("profile2")},
 				}
+				resp := armcdn.ProfilesClientListResponse{ProfileListResult: armcdn.ProfileListResult{Value: profiles}}
 
-				response := armcdn.ProfilesClientListResponse{
-					ProfileListResult: armcdn.ProfileListResult{
-						Value: profiles,
-					},
-				}
-
-				// First call to More() returns true, second returns false
-				mockPager.On("More").Return(true).Once()
-				mockPager.On("More").Return(false).Once()
-				mockPager.On("NextPage", mock.Anything).Return(response, nil).Once()
-
-				mockProfilesClient.On("NewListPager", (*armcdn.ProfilesClientListOptions)(nil)).Return(mockPager)
-				mockFactory.On("NewAFDProfilesClient").Return(mockProfilesClient)
-
-				return mockFactory
+				pager.On("More").Return(true).Once()
+				pager.On("More").Return(false).Once()
+				pager.On("NextPage", mock.Anything).Return(resp, nil).Once()
+				profilesClient.On("NewListPager", (*armcdn.ProfilesClientListOptions)(nil)).Return(pager)
+				factory.On("NewAFDProfilesClient").Return(profilesClient)
+				return factory
 			},
-			expectedResult: []AFDProfile{
+			want: []AFDProfile{
 				{Name: "profile1", ResourceGroup: "rg1"},
 				{Name: "profile2", ResourceGroup: "rg2"},
 			},
-			expectedError: "",
 		},
 		{
 			name: "no profiles found",
 			setupMocks: func() *mockClientFactory {
-				mockFactory := &mockClientFactory{}
-				mockProfilesClient := &mockAFDProfilesClient{}
-				mockPager := &mockAFDProfilesPager{}
+				factory := &mockClientFactory{}
+				profilesClient := &mockAFDProfilesClient{}
+				pager := &mockAFDProfilesPager{}
 
-				response := armcdn.ProfilesClientListResponse{
-					ProfileListResult: armcdn.ProfileListResult{
-						Value: []*armcdn.Profile{},
-					},
-				}
+				resp := armcdn.ProfilesClientListResponse{ProfileListResult: armcdn.ProfileListResult{Value: []*armcdn.Profile{}}}
 
-				mockPager.On("More").Return(true).Once()
-				mockPager.On("More").Return(false).Once()
-				mockPager.On("NextPage", mock.Anything).Return(response, nil).Once()
-
-				mockProfilesClient.On("NewListPager", (*armcdn.ProfilesClientListOptions)(nil)).Return(mockPager)
-				mockFactory.On("NewAFDProfilesClient").Return(mockProfilesClient)
-
-				return mockFactory
+				pager.On("More").Return(true).Once()
+				pager.On("More").Return(false).Once()
+				pager.On("NextPage", mock.Anything).Return(resp, nil).Once()
+				profilesClient.On("NewListPager", (*armcdn.ProfilesClientListOptions)(nil)).Return(pager)
+				factory.On("NewAFDProfilesClient").Return(profilesClient)
+				return factory
 			},
-			expectedResult: nil,
-			expectedError:  "",
+			want: nil,
 		},
 		{
-			name: "error during pagination",
+			name: "pagination error",
 			setupMocks: func() *mockClientFactory {
-				mockFactory := &mockClientFactory{}
-				mockProfilesClient := &mockAFDProfilesClient{}
-				mockPager := &mockAFDProfilesPager{}
+				factory := &mockClientFactory{}
+				profilesClient := &mockAFDProfilesClient{}
+				pager := &mockAFDProfilesPager{}
 
-				mockPager.On("More").Return(true).Once()
-				mockPager.On("NextPage", mock.Anything).Return(armcdn.ProfilesClientListResponse{}, errors.New("pagination error"))
-
-				mockProfilesClient.On("NewListPager", (*armcdn.ProfilesClientListOptions)(nil)).Return(mockPager)
-				mockFactory.On("NewAFDProfilesClient").Return(mockProfilesClient)
-
-				return mockFactory
+				pager.On("More").Return(true).Once()
+				pager.On("NextPage", mock.Anything).Return(armcdn.ProfilesClientListResponse{}, errors.New("pagination error"))
+				profilesClient.On("NewListPager", (*armcdn.ProfilesClientListOptions)(nil)).Return(pager)
+				factory.On("NewAFDProfilesClient").Return(profilesClient)
+				return factory
 			},
-			expectedResult: nil,
-			expectedError:  "failed to advance page in getAFDProfile: pagination error",
+			want:    nil,
+			wantErr: "failed to advance page in getAFDProfile: pagination error",
 		},
 		{
 			name: "invalid resource ID",
 			setupMocks: func() *mockClientFactory {
-				mockFactory := &mockClientFactory{}
-				mockProfilesClient := &mockAFDProfilesClient{}
-				mockPager := &mockAFDProfilesPager{}
+				factory := &mockClientFactory{}
+				profilesClient := &mockAFDProfilesClient{}
+				pager := &mockAFDProfilesPager{}
 
 				profiles := []*armcdn.Profile{
-					{
-						ID:   to.Ptr("invalid-resource-id"),
-						Name: to.Ptr("profile1"),
-					},
+					{ID: to.Ptr("invalid-resource-id"), Name: to.Ptr("profile1")},
 				}
+				resp := armcdn.ProfilesClientListResponse{ProfileListResult: armcdn.ProfileListResult{Value: profiles}}
 
-				response := armcdn.ProfilesClientListResponse{
-					ProfileListResult: armcdn.ProfileListResult{
-						Value: profiles,
-					},
-				}
-
-				mockPager.On("More").Return(true).Once()
-				mockPager.On("More").Return(false).Once()
-				mockPager.On("NextPage", mock.Anything).Return(response, nil).Once()
-
-				mockProfilesClient.On("NewListPager", (*armcdn.ProfilesClientListOptions)(nil)).Return(mockPager)
-				mockFactory.On("NewAFDProfilesClient").Return(mockProfilesClient)
-
-				return mockFactory
+				pager.On("More").Return(true).Once()
+				pager.On("More").Return(false).Once()
+				pager.On("NextPage", mock.Anything).Return(resp, nil).Once()
+				profilesClient.On("NewListPager", (*armcdn.ProfilesClientListOptions)(nil)).Return(pager)
+				factory.On("NewAFDProfilesClient").Return(profilesClient)
+				return factory
 			},
-			expectedResult: nil,
-			expectedError:  "resource group key not found in resource ID",
+			want:    nil,
+			wantErr: "resource group key not found in resource ID",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFactory := tt.setupMocks()
+			t.Parallel()
+
+			factory := tt.setupMocks()
 			ctx := context.Background()
 
-			result, err := getAFDProfile(mockFactory, ctx)
+			result, err := getAFDProfile(factory, ctx)
 
-			if tt.expectedError != "" {
+			if tt.wantErr != "" {
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectedError)
+				assert.Contains(t, err.Error(), tt.wantErr)
 				assert.Nil(t, result)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tt.expectedResult, result)
+				assert.Equal(t, tt.want, result)
 			}
-
-			// Verify all expectations were met
-			mockFactory.AssertExpectations(t)
+			factory.AssertExpectations(t)
 		})
 	}
 }
 
-// Test for getAFDCustomDomains function
 func TestGetAFDCustomDomains(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name           string
-		profiles       []AFDProfile
-		setupMocks     func() *mockClientFactory
-		expectedResult []string
-		expectedError  string
+		name       string
+		profiles   []AFDProfile
+		setupMocks func() *mockClientFactory
+		want       []string
+		wantErr    string
 	}{
 		{
 			name: "successful retrieval of custom domains",
@@ -541,188 +529,155 @@ func TestGetAFDCustomDomains(t *testing.T) {
 				{Name: "profile2", ResourceGroup: "rg2"},
 			},
 			setupMocks: func() *mockClientFactory {
-				mockFactory := &mockClientFactory{}
-				mockCustomDomainsClient := &mockAFDCustomDomainsClient{}
-				mockPager1 := &mockAFDCustomDomainsPager{}
-				mockPager2 := &mockAFDCustomDomainsPager{}
+				factory := &mockClientFactory{}
+				domainsClient := &mockAFDCustomDomainsClient{}
+				pager1 := &mockAFDCustomDomainsPager{}
+				pager2 := &mockAFDCustomDomainsPager{}
 
-				// Setup custom domains for profile1
-				domains1 := []*armcdn.AFDDomain{
-					{
-						Properties: &armcdn.AFDDomainProperties{
-							HostName: to.Ptr("example1.com"),
-						},
-					},
-					{
-						Properties: &armcdn.AFDDomainProperties{
-							HostName: to.Ptr("example2.com"),
-						},
-					},
-				}
-
-				response1 := armcdn.AFDCustomDomainsClientListByProfileResponse{
+				resp1 := armcdn.AFDCustomDomainsClientListByProfileResponse{
 					AFDDomainListResult: armcdn.AFDDomainListResult{
-						Value: domains1,
+						Value: []*armcdn.AFDDomain{
+							{Properties: &armcdn.AFDDomainProperties{HostName: to.Ptr("example1.com")}},
+							{Properties: &armcdn.AFDDomainProperties{HostName: to.Ptr("example2.com")}},
+						},
 					},
 				}
-
-				// Setup custom domains for profile2
-				domains2 := []*armcdn.AFDDomain{
-					{
-						Properties: &armcdn.AFDDomainProperties{
-							HostName: to.Ptr("example3.com"),
+				resp2 := armcdn.AFDCustomDomainsClientListByProfileResponse{
+					AFDDomainListResult: armcdn.AFDDomainListResult{
+						Value: []*armcdn.AFDDomain{
+							{Properties: &armcdn.AFDDomainProperties{HostName: to.Ptr("example3.com")}},
 						},
 					},
 				}
 
-				response2 := armcdn.AFDCustomDomainsClientListByProfileResponse{
-					AFDDomainListResult: armcdn.AFDDomainListResult{
-						Value: domains2,
-					},
-				}
+				pager1.On("More").Return(true).Once()
+				pager1.On("More").Return(false).Once()
+				pager1.On("NextPage", mock.Anything).Return(resp1, nil).Once()
 
-				// Setup pager for profile1
-				mockPager1.On("More").Return(true).Once()
-				mockPager1.On("More").Return(false).Once()
-				mockPager1.On("NextPage", mock.Anything).Return(response1, nil).Once()
+				pager2.On("More").Return(true).Once()
+				pager2.On("More").Return(false).Once()
+				pager2.On("NextPage", mock.Anything).Return(resp2, nil).Once()
 
-				// Setup pager for profile2
-				mockPager2.On("More").Return(true).Once()
-				mockPager2.On("More").Return(false).Once()
-				mockPager2.On("NextPage", mock.Anything).Return(response2, nil).Once()
-
-				mockCustomDomainsClient.On("NewListByProfilePager", "rg1", "profile1", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(mockPager1)
-				mockCustomDomainsClient.On("NewListByProfilePager", "rg2", "profile2", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(mockPager2)
-				mockFactory.On("NewAFDCustomDomainsClient").Return(mockCustomDomainsClient)
-
-				return mockFactory
+				domainsClient.On("NewListByProfilePager", "rg1", "profile1", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(pager1)
+				domainsClient.On("NewListByProfilePager", "rg2", "profile2", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(pager2)
+				factory.On("NewAFDCustomDomainsClient").Return(domainsClient)
+				return factory
 			},
-			expectedResult: []string{"example1.com", "example2.com", "example3.com"},
-			expectedError:  "",
+			want: []string{"example1.com", "example2.com", "example3.com"},
 		},
 		{
 			name:     "no profiles provided",
 			profiles: []AFDProfile{},
 			setupMocks: func() *mockClientFactory {
-				mockFactory := &mockClientFactory{}
-				return mockFactory
+				return &mockClientFactory{}
 			},
-			expectedResult: nil,
-			expectedError:  "",
+			want: nil,
 		},
 		{
-			name: "profile with no custom domains",
-			profiles: []AFDProfile{
-				{Name: "profile1", ResourceGroup: "rg1"},
-			},
+			name:     "profile with no custom domains",
+			profiles: []AFDProfile{{Name: "profile1", ResourceGroup: "rg1"}},
 			setupMocks: func() *mockClientFactory {
-				mockFactory := &mockClientFactory{}
-				mockCustomDomainsClient := &mockAFDCustomDomainsClient{}
-				mockPager := &mockAFDCustomDomainsPager{}
+				factory := &mockClientFactory{}
+				domainsClient := &mockAFDCustomDomainsClient{}
+				pager := &mockAFDCustomDomainsPager{}
 
-				response := armcdn.AFDCustomDomainsClientListByProfileResponse{
-					AFDDomainListResult: armcdn.AFDDomainListResult{
-						Value: []*armcdn.AFDDomain{},
-					},
+				resp := armcdn.AFDCustomDomainsClientListByProfileResponse{
+					AFDDomainListResult: armcdn.AFDDomainListResult{Value: []*armcdn.AFDDomain{}},
 				}
 
-				mockPager.On("More").Return(true).Once()
-				mockPager.On("More").Return(false).Once()
-				mockPager.On("NextPage", mock.Anything).Return(response, nil).Once()
-
-				mockCustomDomainsClient.On("NewListByProfilePager", "rg1", "profile1", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(mockPager)
-				mockFactory.On("NewAFDCustomDomainsClient").Return(mockCustomDomainsClient)
-
-				return mockFactory
+				pager.On("More").Return(true).Once()
+				pager.On("More").Return(false).Once()
+				pager.On("NextPage", mock.Anything).Return(resp, nil).Once()
+				domainsClient.On("NewListByProfilePager", "rg1", "profile1", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(pager)
+				factory.On("NewAFDCustomDomainsClient").Return(domainsClient)
+				return factory
 			},
-			expectedResult: nil,
-			expectedError:  "",
+			want: nil,
 		},
 		{
-			name: "domains with nil properties",
-			profiles: []AFDProfile{
-				{Name: "profile1", ResourceGroup: "rg1"},
-			},
+			name:     "domains with nil properties skipped",
+			profiles: []AFDProfile{{Name: "profile1", ResourceGroup: "rg1"}},
 			setupMocks: func() *mockClientFactory {
-				mockFactory := &mockClientFactory{}
-				mockCustomDomainsClient := &mockAFDCustomDomainsClient{}
-				mockPager := &mockAFDCustomDomainsPager{}
+				factory := &mockClientFactory{}
+				domainsClient := &mockAFDCustomDomainsClient{}
+				pager := &mockAFDCustomDomainsPager{}
 
-				domains := []*armcdn.AFDDomain{
-					{
-						Properties: nil, // This should be skipped
-					},
-					{
-						Properties: &armcdn.AFDDomainProperties{
-							HostName: nil, // This should be skipped
-						},
-					},
-					{
-						Properties: &armcdn.AFDDomainProperties{
-							HostName: to.Ptr("valid.com"), // This should be included
+				resp := armcdn.AFDCustomDomainsClientListByProfileResponse{
+					AFDDomainListResult: armcdn.AFDDomainListResult{
+						Value: []*armcdn.AFDDomain{
+							{Properties: nil},
+							{Properties: &armcdn.AFDDomainProperties{HostName: nil}},
+							{Properties: &armcdn.AFDDomainProperties{HostName: to.Ptr("valid.com")}},
 						},
 					},
 				}
 
-				response := armcdn.AFDCustomDomainsClientListByProfileResponse{
-					AFDDomainListResult: armcdn.AFDDomainListResult{
-						Value: domains,
-					},
-				}
-
-				mockPager.On("More").Return(true).Once()
-				mockPager.On("More").Return(false).Once()
-				mockPager.On("NextPage", mock.Anything).Return(response, nil).Once()
-
-				mockCustomDomainsClient.On("NewListByProfilePager", "rg1", "profile1", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(mockPager)
-				mockFactory.On("NewAFDCustomDomainsClient").Return(mockCustomDomainsClient)
-
-				return mockFactory
+				pager.On("More").Return(true).Once()
+				pager.On("More").Return(false).Once()
+				pager.On("NextPage", mock.Anything).Return(resp, nil).Once()
+				domainsClient.On("NewListByProfilePager", "rg1", "profile1", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(pager)
+				factory.On("NewAFDCustomDomainsClient").Return(domainsClient)
+				return factory
 			},
-			expectedResult: []string{"valid.com"},
-			expectedError:  "",
+			want: []string{"valid.com"},
 		},
 		{
-			name: "pagination error",
-			profiles: []AFDProfile{
-				{Name: "profile1", ResourceGroup: "rg1"},
-			},
+			name:     "pagination error",
+			profiles: []AFDProfile{{Name: "profile1", ResourceGroup: "rg1"}},
 			setupMocks: func() *mockClientFactory {
-				mockFactory := &mockClientFactory{}
-				mockCustomDomainsClient := &mockAFDCustomDomainsClient{}
-				mockPager := &mockAFDCustomDomainsPager{}
+				factory := &mockClientFactory{}
+				domainsClient := &mockAFDCustomDomainsClient{}
+				pager := &mockAFDCustomDomainsPager{}
 
-				mockPager.On("More").Return(true).Once()
-				mockPager.On("NextPage", mock.Anything).Return(armcdn.AFDCustomDomainsClientListByProfileResponse{}, errors.New("pagination failed"))
-
-				mockCustomDomainsClient.On("NewListByProfilePager", "rg1", "profile1", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(mockPager)
-				mockFactory.On("NewAFDCustomDomainsClient").Return(mockCustomDomainsClient)
-
-				return mockFactory
+				pager.On("More").Return(true).Once()
+				pager.On("NextPage", mock.Anything).Return(armcdn.AFDCustomDomainsClientListByProfileResponse{}, errors.New("pagination failed"))
+				domainsClient.On("NewListByProfilePager", "rg1", "profile1", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(pager)
+				factory.On("NewAFDCustomDomainsClient").Return(domainsClient)
+				return factory
 			},
-			expectedResult: nil,
-			expectedError:  "failed to advance page in getAFDCustomDomains : pagination failed",
+			want:    nil,
+			wantErr: "failed to advance page in getAFDCustomDomains : pagination failed",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFactory := tt.setupMocks()
+			t.Parallel()
+
+			factory := tt.setupMocks()
 			ctx := context.Background()
 
-			result, err := getAFDCustomDomains(mockFactory, tt.profiles, ctx)
+			result, err := getAFDCustomDomains(factory, tt.profiles, ctx)
 
-			if tt.expectedError != "" {
+			if tt.wantErr != "" {
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectedError)
+				assert.Contains(t, err.Error(), tt.wantErr)
 				assert.Nil(t, result)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tt.expectedResult, result)
+				assert.Equal(t, tt.want, result)
 			}
-
-			// Verify all expectations were met
-			mockFactory.AssertExpectations(t)
+			factory.AssertExpectations(t)
 		})
+	}
+}
+
+func BenchmarkContainsAzureVulnerableResources(b *testing.B) {
+	testResource := "myapp.azurewebsites.net"
+	b.ResetTimer()
+	for range b.N {
+		containsAzureVulnerableResources(testResource)
+	}
+}
+
+func BenchmarkIsVulnerableResource(b *testing.B) {
+	resources := make(map[string]struct{})
+	for i := range 1000 {
+		resources[fmt.Sprintf("resource%d.azurewebsites.net", i)] = struct{}{}
+	}
+	testCname := "test.azurewebsites.net"
+	b.ResetTimer()
+	for range b.N {
+		isVulnerableResource(resources, testCname)
 	}
 }

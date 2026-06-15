@@ -14,8 +14,6 @@ import (
 	"subdomain/internal/pkg/logger"
 	"subdomain/internal/pkg/slack"
 
-	"net/url"
-
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -52,7 +50,9 @@ type ExtractedResult struct {
 func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 	if err := runUnhappyPathCheck(ctx); err != nil {
 		slog.Error("Unhappy path check failed", "Error", err.Error())
-		slack.SendUnhappyCheckError(AWS_ORG, err.Error())
+		if notifyErr := slack.SendSlackNotification(os.Getenv("CHANNEL_ID_DEBUG"), fmt.Sprintf("Self-test ERROR in %s: %s", AWS_ORG, err.Error())); notifyErr != nil {
+			slog.Error("Failed to send Slack message", "Error", notifyErr.Error())
+		}
 	}
 
 	var vulnerableItemsOrg []string
@@ -65,8 +65,20 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 	}
 	slog.Info("Subdomain takeover monitoring tool has correctly verified all AWS accounts belonging to organization.")
 
-	//Send alert on Slack
-	err = slack.SendSlackNotification(vulnerableItemsOrg, AWS_ORG)
+	slackChannelID := os.Getenv("CHANNEL_ID")
+	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
+	if len(vulnerableItemsOrg) > 0 {
+		var formattedResources []string
+		for _, resource := range vulnerableItemsOrg {
+			formattedResources = append(formattedResources, "• "+resource)
+		}
+		resourceListText := strings.Join(formattedResources, "\n")
+		message := fmt.Sprintf("Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover.\nThe pointed resources do not seem to belong to the organization. Please remove any dangling DNS records from the hosted zones to mitigate the risk.\n", AWS_ORG)
+		err = slack.SendSlackNotification(slackChannelID, message, resourceListText)
+	} else {
+		message := fmt.Sprintf("All DNS records in %s are secure and properly configured.", AWS_ORG)
+		err = slack.SendSlackNotification(slackChannelIDDebug, message)
+	}
 	if err != nil {
 		return "", fmt.Errorf("slack notification failed %v ", err)
 	}
@@ -92,7 +104,7 @@ func processMessage(record events.SQSMessage) ([]string, error) {
 	for _, account := range *accounts {
 		vulnerableItemAccount, accountDNSRecord, err := processAccount(&account)
 		if err != nil {
-			//It does not return because the tool continue with other accounts.
+			// It does not return because the tool continue with other accounts.
 			slog.Error("Error in processing the account....", "Error", err.Error())
 		}
 		vulnerableItemsOrg = append(vulnerableItemsOrg, vulnerableItemAccount...)
@@ -102,7 +114,7 @@ func processMessage(record events.SQSMessage) ([]string, error) {
 }
 
 func processAccount(account *types.Account) ([]string, map[string]*route53.ListResourceRecordSetsOutput, error) {
-	//Create clients for r53, s3, ebs queries
+	// Create clients for r53, s3, ebs queries
 	r53Client, s3Client, ebsClient, err := createClients(account.Id)
 	if err != nil {
 		return nil, nil, err
@@ -111,20 +123,20 @@ func processAccount(account *types.Account) ([]string, map[string]*route53.ListR
 	DNSZonesPoitingToAWSResource := make(map[string]*ExtractedResult)
 	AWSResources := make(map[string]bool)
 
-	//List potential vulnerable CNAME record belonging to the account read from the queue
+	// List potential vulnerable CNAME record belonging to the account read from the queue
 	accountDNSRecord, err := listPotentialVulnerableDNSRecord(r53Client, DNSZonesPoitingToAWSResource)
 	if err != nil {
 		return nil, nil, err
 	}
 	slog.Debug("Listed potential vulnerable CNAME record")
 
-	//List S3 buckets belonging to the assumed account
+	// List S3 buckets belonging to the assumed account
 	err = listS3Buckets(s3Client, AWSResources)
 	if err != nil {
 		return nil, nil, err
 	}
 	slog.Debug("Listed account's S3")
-	//List EBS environments belonging to the assumed account
+	// List EBS environments belonging to the assumed account
 	err = listEBSEnvironment(ebsClient, AWSResources)
 	if err != nil {
 		return nil, nil, err
@@ -132,7 +144,7 @@ func processAccount(account *types.Account) ([]string, map[string]*route53.ListR
 	slog.Debug(fmt.Sprintf("Resources vulnerable to subdomain takeover for account %s - %s:\n", *account.Name, *account.Id))
 	slog.Debug("Listed account's EBS")
 
-	//Verify takeover
+	// Verify takeover
 	vulnerableAWSResources, vulnerableItems := verifyTakeover(DNSZonesPoitingToAWSResource, AWSResources)
 
 	if len(vulnerableAWSResources) > 0 {
@@ -188,7 +200,7 @@ func createClients(accountID *string) (*route53.Client, *s3.Client, *elasticbean
 }
 
 func listPotentialVulnerableDNSRecord(r53Client *route53.Client, DNSZonesPoitingToAWSResource map[string]*ExtractedResult) (map[string]*route53.ListResourceRecordSetsOutput, error) {
-	//Pagination ok
+	// Pagination ok
 	pagination := true
 	var nextMarker *string
 	var resultDNS []route53Types.HostedZone
@@ -202,7 +214,7 @@ func listPotentialVulnerableDNSRecord(r53Client *route53.Client, DNSZonesPoiting
 		nextMarker = tempRes.NextMarker
 		resultDNS = append(resultDNS, tempRes.HostedZones...)
 	}
-	//Pagination
+	// Pagination
 	for _, hostedZone := range resultDNS {
 		pagination = true
 		nextMarker = nil
@@ -225,18 +237,33 @@ func listPotentialVulnerableDNSRecord(r53Client *route53.Client, DNSZonesPoiting
 	return mapDNSZones, nil
 }
 
+func extractHostname(value string) string {
+	// Handle both "scheme://host" and plain "host" formats.
+	if idx := strings.Index(value, "://"); idx != -1 {
+		value = value[idx+3:]
+	}
+	// Strip any trailing path or dot.
+	if idx := strings.Index(value, "/"); idx != -1 {
+		value = value[:idx]
+	}
+	return strings.TrimRight(strings.ToLower(strings.TrimSpace(value)), ".")
+}
+
 func checkPresenceAwsResource(record *route53Types.ResourceRecordSet, hostedZone route53Types.HostedZone, AWSResourceOutput map[string]*ExtractedResult) {
-	tmpExtractedResult := &ExtractedResult{ResourceDNSName: "", Found: false, Name: "", Type: ""}
-	u, _ := url.Parse(*record.ResourceRecords[0].Value)
-	tmpExtractedResult.ResourceDNSName = strings.ToLower(u.Host)
-	tmpExtractedResult.Found = true
-	tmpExtractedResult.Name = strings.ToLower(strings.TrimRight(strings.TrimSpace(*record.Name), "."))
-	tmpExtractedResult.HostedZoneName = *hostedZone.Name
-	tmpExtractedResult.HostedZoneId = *hostedZone.Id
-	if strings.Contains(*record.ResourceRecords[0].Value, S3_RESEARCH_PATTERN) {
+	rawValue := *record.ResourceRecords[0].Value
+	hostname := extractHostname(rawValue)
+
+	tmpExtractedResult := &ExtractedResult{
+		ResourceDNSName: hostname,
+		Found:           true,
+		Name:            strings.ToLower(strings.TrimRight(strings.TrimSpace(*record.Name), ".")),
+		HostedZoneName:  *hostedZone.Name,
+		HostedZoneId:    *hostedZone.Id,
+	}
+	if strings.Contains(rawValue, S3_RESEARCH_PATTERN) {
 		tmpExtractedResult.Type = VULNERABLE_AWS_RESOURCES[0] //S3
 		AWSResourceOutput[tmpExtractedResult.Name] = tmpExtractedResult
-	} else if strings.Contains(*record.ResourceRecords[0].Value, ELASTIC_BEANSTALK_RESEARCH_PATTERN) {
+	} else if strings.Contains(rawValue, ELASTIC_BEANSTALK_RESEARCH_PATTERN) {
 		tmpExtractedResult.Type = VULNERABLE_AWS_RESOURCES[1] //Elasticbeanstalk
 		AWSResourceOutput[tmpExtractedResult.ResourceDNSName] = tmpExtractedResult
 	}
@@ -245,9 +272,9 @@ func checkPresenceAwsResource(record *route53Types.ResourceRecordSet, hostedZone
 func extractCNAMERecords(recordSetsOutput *route53.ListResourceRecordSetsOutput, hostedZone route53Types.HostedZone) map[string]*ExtractedResult {
 	possibleDanglingRecord := make(map[string]*ExtractedResult)
 	for _, record := range recordSetsOutput.ResourceRecordSets {
-		//Check only CNAME records
+		// Check only CNAME records
 		if record.Type == route53Types.RRTypeCname {
-			//Check whether DNS record point to a S3 bucket o EBS env
+			// Check whether DNS record point to a S3 bucket o EBS env
 			if strings.Contains(*record.ResourceRecords[0].Value, S3_RESEARCH_PATTERN) || strings.Contains(*record.ResourceRecords[0].Value, ELASTIC_BEANSTALK_RESEARCH_PATTERN) {
 				checkPresenceAwsResource(&record, hostedZone, possibleDanglingRecord)
 			}
@@ -257,7 +284,7 @@ func extractCNAMERecords(recordSetsOutput *route53.ListResourceRecordSetsOutput,
 }
 
 func listS3Buckets(s3Client *s3.Client, AWSResources map[string]bool) error {
-	//Pagination
+	// Pagination
 	p := s3.NewListBucketsPaginator(s3Client, &s3.ListBucketsInput{})
 	for p.HasMorePages() {
 		page, err := p.NextPage(context.TODO())
@@ -272,7 +299,7 @@ func listS3Buckets(s3Client *s3.Client, AWSResources map[string]bool) error {
 }
 
 func listEBSEnvironment(ebsClient *elasticbeanstalk.Client, AWSResources map[string]bool) error {
-	//Pagination
+	// Pagination
 	pagination := true
 	var nextMarker *string
 	var environments []ebsTypes.EnvironmentDescription
@@ -308,13 +335,15 @@ func verifyTakeover(DNSZonesPoitingToAWSResource map[string]*ExtractedResult, AW
 	return subdomainTakeover, vulnerableItems
 }
 
-func generateTestNames() (dnsZone string, bucketName string) {
+func generateTestNames() (dnsZone string, bucketName string, err error) {
 	b := make([]byte, 6)
-	_, _ = rand.Read(b)
+	if _, err = rand.Read(b); err != nil {
+		return "", "", err
+	}
 	hexStr := hex.EncodeToString(b)
 	dnsZone = hexStr + ".net"
 	bucketName = "subdomain." + dnsZone
-	return dnsZone, bucketName
+	return dnsZone, bucketName, nil
 }
 
 func emptyBucket(ctx context.Context, s3Client *s3.Client, bucketName string) {
@@ -351,7 +380,9 @@ func emptyBucket(ctx context.Context, s3Client *s3.Client, bucketName string) {
 
 func setupDanglingCNAME(ctx context.Context, r53Client *route53.Client, s3Client *s3.Client, dnsZone string, bucketName string) (string, error) {
 	callerRefBytes := make([]byte, 6)
-	_, _ = rand.Read(callerRefBytes)
+	if _, err := rand.Read(callerRefBytes); err != nil {
+		return "", err
+	}
 	callerRef := hex.EncodeToString(callerRefBytes)
 
 	zoneResp, err := r53Client.CreateHostedZone(ctx, &route53.CreateHostedZoneInput{
@@ -373,7 +404,7 @@ func setupDanglingCNAME(ctx context.Context, r53Client *route53.Client, s3Client
 		return hostedZoneId, fmt.Errorf("setupDanglingCNAME: CreateBucket failed: %w", err)
 	}
 
-	bucketFQDN := fmt.Sprintf("https://%s.s3.%s.amazonaws.com", bucketName, REGION)
+	bucketFQDN := fmt.Sprintf("%s.s3.%s.amazonaws.com", bucketName, REGION)
 	_, err = r53Client.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
 		HostedZoneId: aws.String(hostedZoneId),
 		ChangeBatch: &route53Types.ChangeBatch{
@@ -407,7 +438,7 @@ func setupDanglingCNAME(ctx context.Context, r53Client *route53.Client, s3Client
 	return hostedZoneId, nil
 }
 
-func teardownDanglingCNAME(ctx context.Context, r53Client *route53.Client, s3Client *s3.Client, hostedZoneId string, bucketName string) {
+func teardownDanglingCNAME(ctx context.Context, r53Client *route53.Client, s3Client *s3.Client, hostedZoneId string, bucketName string) error {
 	if hostedZoneId != "" {
 		records, err := r53Client.ListResourceRecordSets(ctx, &route53.ListResourceRecordSetsInput{
 			HostedZoneId: aws.String(hostedZoneId),
@@ -449,9 +480,12 @@ func teardownDanglingCNAME(ctx context.Context, r53Client *route53.Client, s3Cli
 	})
 	// The bucket is intentionally deleted by setupDanglingCNAME to create the
 	// dangling state, so a NoSuchBucket error here is expected on the happy path.
-	if err != nil && !strings.Contains(err.Error(), "NoSuchBucket") {
+	var nsb *s3Types.NoSuchBucket
+	if err != nil && !errors.As(err, &nsb) {
 		slog.Error("teardownDanglingCNAME: DeleteBucket failed", "Error", err.Error())
+		return err
 	}
+	return nil
 }
 
 func runUnhappyPathCheck(_ context.Context) error {
@@ -459,7 +493,10 @@ func runUnhappyPathCheck(_ context.Context) error {
 	// cancelled if the Lambda handler context is close to its deadline.
 	ctx := context.Background()
 
-	dnsZone, bucketName := generateTestNames()
+	dnsZone, bucketName, err := generateTestNames()
+	if err != nil {
+		return err
+	}
 	slog.Info("Unhappy path check: starting", "dnsZone", dnsZone)
 
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -472,7 +509,11 @@ func runUnhappyPathCheck(_ context.Context) error {
 	ebsClient := elasticbeanstalk.NewFromConfig(cfg)
 
 	hostedZoneId, err := setupDanglingCNAME(ctx, r53Client, s3Client, dnsZone, bucketName)
-	defer teardownDanglingCNAME(ctx, r53Client, s3Client, hostedZoneId, bucketName)
+	defer func() {
+		if teardownErr := teardownDanglingCNAME(ctx, r53Client, s3Client, hostedZoneId, bucketName); teardownErr != nil {
+			slog.Error("runUnhappyPathCheck: teardown failed", "Error", teardownErr.Error())
+		}
+	}()
 	if err != nil {
 		return err
 	}
@@ -503,5 +544,9 @@ func runUnhappyPathCheck(_ context.Context) error {
 	}
 	slog.Info("Unhappy path check: detection complete", "vulnerableItems", len(testZoneItems))
 
-	return slack.SendUnhappyCheckNotification(testZoneItems, AWS_ORG, dnsZone)
+	if len(testZoneItems) == 0 {
+		return slack.SendSlackNotification(os.Getenv("CHANNEL_ID_DEBUG"), fmt.Sprintf("Self-test FAILED: dangling record in %s for test zone %s was NOT detected.", AWS_ORG, dnsZone))
+	}
+
+	return nil
 }

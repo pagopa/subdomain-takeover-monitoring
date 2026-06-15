@@ -271,7 +271,9 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 
 	if err := runUnhappyPathCheck(credential); err != nil {
 		slog.Error("Unhappy path check failed", "Error", err.Error())
-		slack.SendUnhappyCheckError(AZURE_ORG, err.Error())
+		if notifyErr := slack.SendSlackNotification(os.Getenv("CHANNEL_ID_DEBUG"), fmt.Sprintf("Self-test ERROR in %s: %s", AZURE_ORG, err.Error())); notifyErr != nil {
+			slog.Error("Failed to send Slack message", "Error", notifyErr.Error())
+		}
 	}
 
 	existingResources, subscriptionIDs, err := buildExistingAzureResources(ctx, credential)
@@ -310,8 +312,21 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 		}
 	}
 	slog.Info("Subdomain takeover monitoring tool has correctly verified all Azure accounts belonging to organization.")
-	err = slack.SendSlackNotification(detectedVulnerabilities, AZURE_ORG)
 
+	slackChannelID := os.Getenv("CHANNEL_ID")
+	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
+	if len(detectedVulnerabilities) > 0 {
+		var formattedResources []string
+		for _, resource := range detectedVulnerabilities {
+			formattedResources = append(formattedResources, "• "+resource)
+		}
+		resourceListText := strings.Join(formattedResources, "\n")
+		message := fmt.Sprintf("Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover.\nThe pointed resources do not seem to belong to the organization. Please remove any dangling DNS records from the hosted zones to mitigate the risk.\n", AZURE_ORG)
+		err = slack.SendSlackNotification(slackChannelID, message, resourceListText)
+	} else {
+		message := fmt.Sprintf("All DNS records in %s are secure and properly configured.", AZURE_ORG)
+		err = slack.SendSlackNotification(slackChannelIDDebug, message)
+	}
 	if err != nil {
 		return "", fmt.Errorf("slack notification failed %v", err)
 	}
@@ -428,9 +443,11 @@ func main() {
 	lambda.Start(HandleRequest)
 }
 
-func generateAzureTestNames() (rgName string, dnsZoneName string, storageAccountName string) {
+func generateAzureTestNames() (rgName string, dnsZoneName string, storageAccountName string, err error) {
 	b := make([]byte, 6)
-	_, _ = rand.Read(b)
+	if _, err = rand.Read(b); err != nil {
+		return "", "", "", err
+	}
 	hexStr := hex.EncodeToString(b)
 	rgName = fmt.Sprintf("%s-%s", UNHAPPY_CHECK_RG_PREFIX, hexStr)
 	dnsZoneName = fmt.Sprintf("%s.net", hexStr)
@@ -439,7 +456,7 @@ func generateAzureTestNames() (rgName string, dnsZoneName string, storageAccount
 		raw = raw[:24]
 	}
 	storageAccountName = raw
-	return rgName, dnsZoneName, storageAccountName
+	return rgName, dnsZoneName, storageAccountName, nil
 }
 
 func azureSelfTestCNAME(storageAccountName string) string {
@@ -543,7 +560,10 @@ func runUnhappyPathCheck(credential *azidentity.DefaultAzureCredential) error {
 		return fmt.Errorf("runUnhappyPathCheck: AZURE_SUBSCRIPTION_ID env var not set")
 	}
 
-	rgName, dnsZoneName, storageAccountName := generateAzureTestNames()
+	rgName, dnsZoneName, storageAccountName, err := generateAzureTestNames()
+	if err != nil {
+		return err
+	}
 
 	zone, err := setupAzureDanglingCNAME(selfTestCtx, credential, subscriptionID, rgName, dnsZoneName, storageAccountName)
 	defer teardownAzureDanglingCNAME(credential, subscriptionID, rgName)
@@ -580,7 +600,8 @@ func runUnhappyPathCheck(credential *azidentity.DefaultAzureCredential) error {
 
 	if len(cnameRecords) == 0 {
 		slog.Error("Unhappy path check: failed to detect expected dangling record", "dnsZone", dnsZoneName, "rgName", rgName)
+		return slack.SendSlackNotification(os.Getenv("CHANNEL_ID_DEBUG"), fmt.Sprintf("Self-test FAILED: dangling record in %s for test zone %s was NOT detected.", AZURE_ORG, dnsZoneName))
 	}
 
-	return slack.SendUnhappyCheckNotification(cnameRecords, AZURE_ORG, dnsZoneName)
+	return nil
 }
