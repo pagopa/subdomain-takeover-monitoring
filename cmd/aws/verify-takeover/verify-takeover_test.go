@@ -495,6 +495,43 @@ func TestRunUnhappyPathCheckFailsGracefully(t *testing.T) {
 	}
 }
 
+func TestFormatBulletList(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		items []string
+		want  string
+	}{
+		{
+			name:  "single item",
+			items: []string{"a.example.com -> a.s3.amazonaws.com"},
+			want:  "• a.example.com -> a.s3.amazonaws.com",
+		},
+		{
+			name:  "multiple items",
+			items: []string{"a.example.com -> a.s3.amazonaws.com", "b.example.com -> b.elasticbeanstalk.com"},
+			want:  "• a.example.com -> a.s3.amazonaws.com\n• b.example.com -> b.elasticbeanstalk.com",
+		},
+		{
+			name:  "empty list",
+			items: []string{},
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := formatBulletList(tt.items)
+			if got != tt.want {
+				t.Errorf("formatBulletList() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // helpers
 
 func cnameRecord(name, value string) route53Types.ResourceRecordSet {

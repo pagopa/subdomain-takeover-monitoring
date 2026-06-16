@@ -68,11 +68,7 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 	slackChannelID := os.Getenv("CHANNEL_ID")
 	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
 	if len(vulnerableItemsOrg) > 0 {
-		var formattedResources []string
-		for _, resource := range vulnerableItemsOrg {
-			formattedResources = append(formattedResources, "• "+resource)
-		}
-		resourceListText := strings.Join(formattedResources, "\n")
+		resourceListText := formatBulletList(vulnerableItemsOrg)
 		message := fmt.Sprintf("Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover.\nThe pointed resources do not seem to belong to the organization. Please remove any dangling DNS records from the hosted zones to mitigate the risk.\n", AWS_ORG)
 		err = slack.SendSlackNotification(slackChannelID, message, resourceListText)
 	} else {
@@ -92,6 +88,14 @@ func main() {
 	logger.SetLogger()
 	slog.Debug("Starting Lambda...")
 	lambda.Start(HandleRequest)
+}
+
+func formatBulletList(items []string) string {
+	var formatted []string
+	for _, item := range items {
+		formatted = append(formatted, "• "+item)
+	}
+	return strings.Join(formatted, "\n")
 }
 
 func processMessage(record events.SQSMessage) ([]string, error) {

@@ -167,6 +167,14 @@ func isVulnerableResource(resources map[string]struct{}, cname string) bool {
 	return !exists
 }
 
+func formatBulletList(items []string) string {
+	var formatted []string
+	for _, item := range items {
+		formatted = append(formatted, "• "+item)
+	}
+	return strings.Join(formatted, "\n")
+}
+
 func readQueryFile(filePath string) (string, error) {
 	queryData, err := os.ReadFile(filePath)
 	if err != nil {
@@ -316,11 +324,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	slackChannelID := os.Getenv("CHANNEL_ID")
 	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
 	if len(detectedVulnerabilities) > 0 {
-		var formattedResources []string
-		for _, resource := range detectedVulnerabilities {
-			formattedResources = append(formattedResources, "• "+resource)
-		}
-		resourceListText := strings.Join(formattedResources, "\n")
+		resourceListText := formatBulletList(detectedVulnerabilities)
 		message := fmt.Sprintf("Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover.\nThe pointed resources do not seem to belong to the organization. Please remove any dangling DNS records from the hosted zones to mitigate the risk.\n", AZURE_ORG)
 		err = slack.SendSlackNotification(slackChannelID, message, resourceListText)
 	} else {

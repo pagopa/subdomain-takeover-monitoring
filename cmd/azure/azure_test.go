@@ -662,6 +662,41 @@ func TestGetAFDCustomDomains(t *testing.T) {
 	}
 }
 
+func TestFormatBulletList(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		items []string
+		want  string
+	}{
+		{
+			name:  "single item",
+			items: []string{"a.example.com -> a.blob.core.windows.net"},
+			want:  "• a.example.com -> a.blob.core.windows.net",
+		},
+		{
+			name:  "multiple items",
+			items: []string{"a.example.com -> a.blob.core.windows.net", "b.example.com -> b.azurewebsites.net"},
+			want:  "• a.example.com -> a.blob.core.windows.net\n• b.example.com -> b.azurewebsites.net",
+		},
+		{
+			name:  "empty list",
+			items: []string{},
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := formatBulletList(tt.items)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func BenchmarkContainsAzureVulnerableResources(b *testing.B) {
 	testResource := "myapp.azurewebsites.net"
 	b.ResetTimer()
