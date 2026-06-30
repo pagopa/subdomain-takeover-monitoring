@@ -282,6 +282,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 		if notifyErr := slack.SendSlackNotification(os.Getenv("CHANNEL_ID_DEBUG"), fmt.Sprintf("Self-test ERROR in %s: %s", AZURE_ORG, err.Error())); notifyErr != nil {
 			slog.Error("Failed to send Slack message", "Error", notifyErr.Error())
 		}
+		return "", fmt.Errorf("unhappy path check failed: %w", err)
 	}
 
 	existingResources, subscriptionIDs, err := buildExistingAzureResources(ctx, credential)

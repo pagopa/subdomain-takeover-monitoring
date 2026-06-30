@@ -53,6 +53,7 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 		if notifyErr := slack.SendSlackNotification(os.Getenv("CHANNEL_ID_DEBUG"), fmt.Sprintf("Self-test ERROR in %s: %s", AWS_ORG, err.Error())); notifyErr != nil {
 			slog.Error("Failed to send Slack message", "Error", notifyErr.Error())
 		}
+		return "", fmt.Errorf("unhappy path check failed: %w", err)
 	}
 
 	var vulnerableItemsOrg []string
