@@ -82,21 +82,7 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 	// Separate the real dangling records from the canary planted for the self-test.
 	realItems, canaryFound := canary.Split(vulnerableItemsOrg)
 
-	switch {
-	case !canaryFound:
-		// The scanner failed to detect the canary, so its results cannot be trusted.
-		slog.Error("Self-test failed: the canary dangling record was not detected")
-		message := fmt.Sprintf("Self-test FAILED in %s: the canary dangling record was not detected, so the scanner may be broken.", AWS_ORG)
-		err = slack.SendSlackNotification(slackChannelIDDebug, message)
-	case len(realItems) > 0:
-		resourceListText := slack.FormatBulletList(realItems)
-		message := fmt.Sprintf("Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover.\nThe pointed resources do not seem to belong to the organization. Please remove any dangling DNS records from the hosted zones to mitigate the risk.\n", AWS_ORG)
-		err = slack.SendSlackNotification(slackChannelID, message, resourceListText)
-	default:
-		message := fmt.Sprintf("All DNS records in %s are secure and properly configured.", AWS_ORG)
-		err = slack.SendSlackNotification(slackChannelIDDebug, message)
-	}
-	if err != nil {
+	if err = slack.NotifyScanResult(AWS_ORG, slackChannelID, slackChannelIDDebug, realItems, canaryFound); err != nil {
 		return "", fmt.Errorf("slack notification failed %v ", err)
 	}
 

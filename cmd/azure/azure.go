@@ -327,21 +327,7 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 
 	slackChannelID := os.Getenv("CHANNEL_ID")
 	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
-	switch {
-	case !canaryFound:
-		// The scanner failed to detect the canary, so its results cannot be trusted.
-		slog.Error("Self-test failed: the canary dangling record was not detected")
-		message := fmt.Sprintf("Self-test FAILED in %s: the canary dangling record was not detected, so the scanner may be broken.", AZURE_ORG)
-		err = slack.SendSlackNotification(slackChannelIDDebug, message)
-	case len(realItems) > 0:
-		resourceListText := slack.FormatBulletList(realItems)
-		message := fmt.Sprintf("Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover.\nThe pointed resources do not seem to belong to the organization. Please remove any dangling DNS records from the hosted zones to mitigate the risk.\n", AZURE_ORG)
-		err = slack.SendSlackNotification(slackChannelID, message, resourceListText)
-	default:
-		message := fmt.Sprintf("All DNS records in %s are secure and properly configured.", AZURE_ORG)
-		err = slack.SendSlackNotification(slackChannelIDDebug, message)
-	}
-	if err != nil {
+	if err = slack.NotifyScanResult(AZURE_ORG, slackChannelID, slackChannelIDDebug, realItems, canaryFound); err != nil {
 		return "", fmt.Errorf("slack notification failed %v", err)
 	}
 	slog.Debug("Subdomain takeover monitoring tool sent the result of execution via Slack.")
