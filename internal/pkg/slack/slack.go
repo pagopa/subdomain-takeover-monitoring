@@ -1,53 +1,20 @@
 package slack
 
 import (
-	"fmt"
-	"log/slog"
 	"os"
-	"strings"
 
-	"github.com/slack-go/slack"
+	slackapi "github.com/slack-go/slack"
 )
 
-const (
-	badNotificationText  = "Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover.\nThe pointed resources do not seem to belong to the organization. Please remove any dangling DNS records from the hosted zones to mitigate the risk.\n"
-	goodNotificationText = "All DNS records in %s are secure and properly configured."
-)
-
-func SendSlackNotification(vulnerableResources []string, cloud_provider string) error {
+func SendSlackNotification(channelID string, message string, attachmentTexts ...string) error {
 	slackToken := os.Getenv("SLACK_TOKEN")
-	slackChannelID := os.Getenv("CHANNEL_ID")
-	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
-	slackClient := slack.New(slackToken)
+	slackClient := slackapi.New(slackToken)
 
-	slog.Debug(fmt.Sprintf("Cloud provider: %s", cloud_provider))
-	slog.Debug(fmt.Sprintf("Number of vulnerable resources: %d", len(vulnerableResources)))
-
-	if len(vulnerableResources) > 0 {
-		slog.Debug("Vulnerable resources detected")
-		var formattedResources []string
-		for _, resource := range vulnerableResources {
-			formattedResources = append(formattedResources, "• "+resource)
-		}
-		resourceListText := strings.Join(formattedResources, "\n")
-
-		attachments := []slack.Attachment{
-			{
-				Text: resourceListText,
-			},
-		}
-		slog.Debug(fmt.Sprintf("Vulnerable resources: %s", resourceListText))
-		_, _, err := slackClient.PostMessage(slackChannelID, slack.MsgOptionText(fmt.Sprintf(badNotificationText, cloud_provider), true), slack.MsgOptionAttachments(attachments...))
-		if err != nil {
-			return err
-		}
-		slog.Debug("Alert message sent successfully")
-	} else {
-		_, _, err := slackClient.PostMessage(slackChannelIDDebug, slack.MsgOptionText(fmt.Sprintf(goodNotificationText, cloud_provider), true), slack.MsgOptionAttachments())
-		if err != nil {
-			return err
-		}
-		slog.Debug("Alert message sent successfully")
+	var attachments []slackapi.Attachment
+	for _, text := range attachmentTexts {
+		attachments = append(attachments, slackapi.Attachment{Text: text})
 	}
-	return nil
+
+	_, _, err := slackClient.PostMessage(channelID, slackapi.MsgOptionText(message, true), slackapi.MsgOptionAttachments(attachments...))
+	return err
 }
