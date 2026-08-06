@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"subdomain/internal/pkg/logger"
+	"subdomain/internal/pkg/selftest"
 	"subdomain/internal/pkg/slack"
 
 	"net/url"
@@ -46,8 +47,30 @@ type ExtractedResult struct {
 }
 
 func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
+	slackChannelID := os.Getenv("CHANNEL_ID")
+	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
+
+	// Create clients in the Lambda's own account for the self-test canary.
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to load AWS config: %w", err)
+	}
+	r53OwnClient := route53.NewFromConfig(cfg)
+	s3OwnClient := s3.NewFromConfig(cfg, func(o *s3.Options) { o.Region = REGION })
+
+	// Create the canary before scanning so the scan detects it like any other
+	// dangling record. Teardown is deferred so the resources are always removed.
+	canary, err := selftest.SetupDanglingCNAME(ctx, r53OwnClient, s3OwnClient, REGION)
+	defer func() {
+		if terr := canary.Teardown(ctx, r53OwnClient, s3OwnClient); terr != nil {
+			slog.Error("canary teardown failed", "Error", terr.Error())
+		}
+	}()
+	if err != nil {
+		return "", fmt.Errorf("canary setup failed: %w", err)
+	}
+
 	var vulnerableItemsOrg []string
-	var err error
 	for _, record := range event.Records {
 		vulnerableItemsOrg, err = processMessage(record)
 		if err != nil {
@@ -56,8 +79,23 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 	}
 	slog.Info("Subdomain takeover monitoring tool has correctly verified all AWS accounts belonging to organization.")
 
-	//Send alert on Slack
-	err = slack.SendSlackNotification(vulnerableItemsOrg, AWS_ORG)
+	// Separate the real dangling records from the canary planted for the self-test.
+	realItems, canaryFound := canary.Split(vulnerableItemsOrg)
+
+	switch {
+	case !canaryFound:
+		// The scanner failed to detect the canary, so its results cannot be trusted.
+		slog.Error("Self-test failed: the canary dangling record was not detected")
+		message := fmt.Sprintf("Self-test FAILED in %s: the canary dangling record was not detected, so the scanner may be broken.", AWS_ORG)
+		err = slack.SendSlackNotification(slackChannelIDDebug, message)
+	case len(realItems) > 0:
+		resourceListText := slack.FormatBulletList(realItems)
+		message := fmt.Sprintf("Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover.\nThe pointed resources do not seem to belong to the organization. Please remove any dangling DNS records from the hosted zones to mitigate the risk.\n", AWS_ORG)
+		err = slack.SendSlackNotification(slackChannelID, message, resourceListText)
+	default:
+		message := fmt.Sprintf("All DNS records in %s are secure and properly configured.", AWS_ORG)
+		err = slack.SendSlackNotification(slackChannelIDDebug, message)
+	}
 	if err != nil {
 		return "", fmt.Errorf("slack notification failed %v ", err)
 	}
@@ -218,8 +256,14 @@ func listPotentialVulnerableDNSRecord(r53Client *route53.Client, DNSZonesPoiting
 
 func checkPresenceAwsResource(record *route53Types.ResourceRecordSet, hostedZone route53Types.HostedZone, AWSResourceOutput map[string]*ExtractedResult) {
 	tmpExtractedResult := &ExtractedResult{ResourceDNSName: "", Found: false, Name: "", Type: ""}
-	u, _ := url.Parse(*record.ResourceRecords[0].Value)
-	tmpExtractedResult.ResourceDNSName = strings.ToLower(u.Host)
+	// CNAME values have no scheme, so prepend "//" (when absent) to make url.Parse
+	// populate Host instead of dumping the whole value into Path.
+	parseValue := strings.TrimSpace(*record.ResourceRecords[0].Value)
+	if !strings.Contains(parseValue, "://") {
+		parseValue = "//" + parseValue
+	}
+	u, _ := url.Parse(parseValue)
+	tmpExtractedResult.ResourceDNSName = strings.TrimRight(strings.ToLower(u.Host), ".")
 	tmpExtractedResult.Found = true
 	tmpExtractedResult.Name = strings.ToLower(strings.TrimRight(strings.TrimSpace(*record.Name), "."))
 	tmpExtractedResult.HostedZoneName = *hostedZone.Name
