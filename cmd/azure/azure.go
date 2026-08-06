@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"subdomain/internal/pkg/logger"
+	"subdomain/internal/pkg/selftest"
 	"subdomain/internal/pkg/slack"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -160,7 +161,6 @@ func getDnsCNAMERecords(resources map[string]struct{}, dnsZone armdns.Zone, subs
 	}
 
 	return vulnerableResources, nil
-
 }
 
 func isVulnerableResource(resources map[string]struct{}, cname string) bool {
@@ -207,6 +207,19 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 		return "", fmt.Errorf("failed to obtain a credential: %v", err)
 	}
 	cntx := context.Background()
+
+	selfTestSubscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID")
+	// Create the canary before scanning so the scan detects it
+	canary, err := selftest.SetupAzureDanglingCNAME(cntx, credential, selfTestSubscriptionID)
+	defer func() {
+		if terr := canary.Teardown(credential); terr != nil {
+			slog.Error("canary teardown failed", "Error", terr.Error())
+		}
+	}()
+	if err != nil {
+		return "", fmt.Errorf("canary setup failed: %w", err)
+	}
+
 	resourceGraphClientFactory, err := armresourcegraph.NewClientFactory(credential, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create resource graph client: %v", err)
@@ -262,7 +275,14 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	// Unfortunately, custom domains are not available in the Azure Resource Graph, so the
 	// information must be retrieved via the ARM API.
 
-	getCustomDomains(allVulnerableResources, subscriptionIDs)
+	if err := getCustomDomains(allVulnerableResources, subscriptionIDs); err != nil {
+		return "", fmt.Errorf("failed to get custom domains: %w", err)
+	}
+
+	// The canary storage account was deleted during setup, but Resource Graph is
+	// eventually consistent and may still list it. Drop it so the canary is
+	// correctly detected as dangling.
+	delete(allVulnerableResources, canary.StorageCNAME())
 
 	var detectedVulnerabilities []string
 	for _, subscriptionID := range subscriptionIDs {
@@ -281,6 +301,11 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 				return "", fmt.Errorf("dnsZonesPager failed to advance page: %v", err)
 			}
 			for _, dnsZone := range page.Value {
+				// Skip leftover self-test zones from previous runs, but keep our own
+				// canary so the scan can detect it.
+				if rg, rgErr := getResourceGroupFromResourceID(*dnsZone.ID); rgErr == nil && selftest.IsSelfTestZone(rg) && rg != canary.RGName {
+					continue
+				}
 				cnameRecords, err := getDnsCNAMERecords(allVulnerableResources, *dnsZone, subscriptionID)
 				if err != nil {
 					return "", err
@@ -290,8 +315,26 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 		}
 	}
 	slog.Info("Subdomain takeover monitoring tool has correctly verified all Azure accounts belonging to organization.")
-	err = slack.SendSlackNotification(detectedVulnerabilities, AZURE_ORG)
 
+	// Separate the real dangling records from the canary
+	realItems, canaryFound := canary.Split(detectedVulnerabilities)
+
+	slackChannelID := os.Getenv("CHANNEL_ID")
+	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
+	switch {
+	case !canaryFound:
+		// The scanner failed to detect the canary, so its results cannot be trusted.
+		slog.Error("Self-test failed: the canary dangling record was not detected")
+		message := fmt.Sprintf("Self-test FAILED in %s: the canary dangling record was not detected, so the scanner may be broken.", AZURE_ORG)
+		err = slack.SendSlackNotification(slackChannelIDDebug, message)
+	case len(realItems) > 0:
+		resourceListText := slack.FormatBulletList(realItems)
+		message := fmt.Sprintf("Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover.\nThe pointed resources do not seem to belong to the organization. Please remove any dangling DNS records from the hosted zones to mitigate the risk.\n", AZURE_ORG)
+		err = slack.SendSlackNotification(slackChannelID, message, resourceListText)
+	default:
+		message := fmt.Sprintf("All DNS records in %s are secure and properly configured.", AZURE_ORG)
+		err = slack.SendSlackNotification(slackChannelIDDebug, message)
+	}
 	if err != nil {
 		return "", fmt.Errorf("slack notification failed %v", err)
 	}
