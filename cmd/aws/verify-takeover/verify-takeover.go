@@ -306,7 +306,13 @@ func listS3Buckets(s3Client *s3.Client, AWSResources map[string]bool) error {
 	return nil
 }
 
-func listEBSEnvironment(ebsClient *elasticbeanstalk.Client, AWSResources map[string]bool) error {
+// ebsDescribeEnvironmentsAPI is the subset of the Elastic Beanstalk client used
+// to list environments, defined here so it can be mocked in tests.
+type ebsDescribeEnvironmentsAPI interface {
+	DescribeEnvironments(ctx context.Context, params *elasticbeanstalk.DescribeEnvironmentsInput, optFns ...func(*elasticbeanstalk.Options)) (*elasticbeanstalk.DescribeEnvironmentsOutput, error)
+}
+
+func listEBSEnvironment(ebsClient ebsDescribeEnvironmentsAPI, AWSResources map[string]bool) error {
 	//Pagination
 	pagination := true
 	var nextMarker *string
