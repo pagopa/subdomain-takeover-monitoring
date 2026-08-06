@@ -275,7 +275,13 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	// Unfortunately, custom domains are not available in the Azure Resource Graph, so the
 	// information must be retrieved via the ARM API.
 
-	if err := getCustomDomains(allVulnerableResources, subscriptionIDs); err != nil {
+	if err := getCustomDomains(allVulnerableResources, subscriptionIDs, func(sub string) (ClientFactory, error) {
+		clientFactory, err := armcdn.NewClientFactory(sub, credential, nil)
+		if err != nil {
+			return nil, err
+		}
+		return &wrapperClientFactory{client: clientFactory}, nil
+	}); err != nil {
 		return "", fmt.Errorf("failed to get custom domains: %w", err)
 	}
 
@@ -347,24 +353,18 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 // Parameters:
 //   - allVulnerableResources: map to store discovered custom domain names
 //   - subscriptionIDs: slice of Azure subscription IDs to scan
+//   - newClientFactory: builds an AFD client factory for a subscription
 //
-// Returns error if authentication, client creation, or API calls fail
-func getCustomDomains(allVulnerableResources map[string]struct{}, subscriptionIDs []string) error {
-	// Initialize Azure authentication using default credential chain
-	// (environment variables, managed identity, Azure CLI, etc.)
-	credential, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		return fmt.Errorf("failed to obtain a credential: %v", err)
-	}
+// Returns error if client creation or API calls fail
+func getCustomDomains(allVulnerableResources map[string]struct{}, subscriptionIDs []string, newClientFactory func(subscriptionID string) (ClientFactory, error)) error {
 	ctx := context.Background()
 	// Iterate through each provided subscription
 	for _, sub := range subscriptionIDs {
-		clientFactory, err := armcdn.NewClientFactory(sub, credential, nil)
+		client, err := newClientFactory(sub)
 		if err != nil {
 			return fmt.Errorf("failed to create clientFactory: %v", err)
 		}
 		// Get all AFD profiles in the current subscription
-		client := &wrapperClientFactory{client: clientFactory}
 		profiles, err := getAFDProfile(client, ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get profile: %v", err)
