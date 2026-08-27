@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -169,7 +168,9 @@ func (c AWSCanary) Teardown(ctx context.Context, r53Client *route53.Client, s3Cl
 }
 
 func deleteBucket(ctx context.Context, s3Client *s3.Client, bucketName string) error {
-	emptyBucket(ctx, s3Client, bucketName)
+	if err := emptyBucket(ctx, s3Client, bucketName); err != nil {
+		return err
+	}
 	_, err := s3Client.DeleteBucket(ctx, &s3.DeleteBucketInput{
 		Bucket: aws.String(bucketName),
 	})
@@ -183,18 +184,18 @@ func isNoSuchBucket(err error) bool {
 	return errors.As(err, &apiErr) && apiErr.ErrorCode() == "NoSuchBucket"
 }
 
-func emptyBucket(ctx context.Context, s3Client *s3.Client, bucketName string) {
+func emptyBucket(ctx context.Context, s3Client *s3.Client, bucketName string) error {
 	paginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucketName),
 	})
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
+			// The bucket may already be gone, so there is nothing to empty.
 			if isNoSuchBucket(err) {
-				return
+				return nil
 			}
-			slog.Error("emptyBucket: list objects failed", "Error", err.Error())
-			return
+			return fmt.Errorf("emptyBucket: list objects failed: %w", err)
 		}
 		if len(page.Contents) == 0 {
 			break
@@ -208,8 +209,8 @@ func emptyBucket(ctx context.Context, s3Client *s3.Client, bucketName string) {
 			Delete: &s3Types.Delete{Objects: ids},
 		})
 		if err != nil {
-			slog.Error("emptyBucket: delete objects failed", "Error", err.Error())
-			return
+			return fmt.Errorf("emptyBucket: delete objects failed: %w", err)
 		}
 	}
+	return nil
 }

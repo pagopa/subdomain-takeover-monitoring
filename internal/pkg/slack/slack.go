@@ -25,6 +25,13 @@ func SendSlackNotification(channelID string, message string, attachmentTexts ...
 // variable so tests can substitute a fake sender instead of calling Slack.
 var sendNotification = SendSlackNotification
 
+// Notification message templates; each takes the org name as its %s argument.
+const (
+	goodNotificationText = "All DNS records in %s are secure and properly configured."
+	badNotificationText  = "Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover.\nThe pointed resources do not seem to belong to the organization. Please remove any dangling DNS records from the hosted zones to mitigate the risk.\n"
+	canaryNotFoundText   = "Self-test FAILED in %s: the canary dangling record was not detected, so the scanner may be broken."
+)
+
 // NotifyScanResult sends the appropriate Slack notification for a scan outcome:
 //   - the canary was not detected
 //   - real dangling records were found
@@ -33,14 +40,14 @@ func NotifyScanResult(org string, channelID string, channelIDDebug string, realI
 	switch {
 	case !canaryFound:
 		slog.Error("Self-test failed: the canary dangling record was not detected")
-		message := fmt.Sprintf("Self-test FAILED in %s: the canary dangling record was not detected, so the scanner may be broken.", org)
+		message := fmt.Sprintf(canaryNotFoundText, org)
 		return sendNotification(channelIDDebug, message)
 	case len(realItems) > 0:
 		resourceListText := FormatBulletList(realItems)
-		message := fmt.Sprintf("Attention: Potentially vulnerable resources detected in %s. These may be susceptible to subdomain takeover.\nThe pointed resources do not seem to belong to the organization. Please remove any dangling DNS records from the hosted zones to mitigate the risk.\n", org)
+		message := fmt.Sprintf(badNotificationText, org)
 		return sendNotification(channelID, message, resourceListText)
 	default:
-		message := fmt.Sprintf("All DNS records in %s are secure and properly configured.", org)
+		message := fmt.Sprintf(goodNotificationText, org)
 		return sendNotification(channelIDDebug, message)
 	}
 }

@@ -46,7 +46,7 @@ type ExtractedResult struct {
 	Type            string //S3, Elasticbeanstalk
 }
 
-func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
+func HandleRequest(ctx context.Context, event events.SQSEvent) (result string, err error) {
 	slackChannelID := os.Getenv("CHANNEL_ID")
 	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
 
@@ -64,6 +64,9 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 	defer func() {
 		if terr := canary.Teardown(ctx, r53OwnClient, s3OwnClient); terr != nil {
 			slog.Error("canary teardown failed", "Error", terr.Error())
+			if err == nil {
+				err = fmt.Errorf("canary teardown failed: %w", terr)
+			}
 		}
 	}()
 	if err != nil {
@@ -144,7 +147,7 @@ func processAccount(account *types.Account) ([]string, map[string]*route53.ListR
 	if err != nil {
 		return nil, nil, err
 	}
-	slog.Debug(fmt.Sprintf("Resources vulnerable to subdomain takeover for account %s - %s:\n", *account.Name, *account.Id))
+	slog.Debug("Resources vulnerable to subdomain takeover for account", "name", *account.Name, "id", *account.Id)
 	slog.Debug("Listed account's EBS")
 
 	//Verify takeover

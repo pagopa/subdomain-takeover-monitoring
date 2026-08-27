@@ -201,7 +201,7 @@ func getAllAzureSubscriptions() ([]string, error) {
 	return subscriptionIDs, nil
 }
 
-func HandleRequest(ctx context.Context, event interface{}) (string, error) {
+func HandleRequest(ctx context.Context, event interface{}) (result string, err error) {
 	credential, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain a credential: %v", err)
@@ -214,6 +214,9 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	defer func() {
 		if terr := canary.Teardown(credential); terr != nil {
 			slog.Error("canary teardown failed", "Error", terr.Error())
+			if err == nil {
+				err = fmt.Errorf("canary teardown failed: %w", terr)
+			}
 		}
 	}()
 	if err != nil {
