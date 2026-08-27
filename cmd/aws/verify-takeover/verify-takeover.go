@@ -147,7 +147,10 @@ func processAccount(account *types.Account) ([]string, map[string]*route53.ListR
 	if err != nil {
 		return nil, nil, err
 	}
-	slog.Debug("Resources vulnerable to subdomain takeover for account", "name", *account.Name, "id", *account.Id)
+	// Strip CR/LF from user-provided account fields to prevent log injection.
+	safeAccountName := strings.ReplaceAll(strings.ReplaceAll(*account.Name, "\n", ""), "\r", "")
+	safeAccountID := strings.ReplaceAll(strings.ReplaceAll(*account.Id, "\n", ""), "\r", "")
+	slog.Debug("Resources vulnerable to subdomain takeover for account", "name", safeAccountName, "id", safeAccountID)
 	slog.Debug("Listed account's EBS")
 
 	//Verify takeover
@@ -155,9 +158,6 @@ func processAccount(account *types.Account) ([]string, map[string]*route53.ListR
 
 	if len(vulnerableAWSResources) > 0 {
 		jsonResult, _ := json.Marshal(vulnerableAWSResources)
-		*account.Name = strings.ReplaceAll(strings.ReplaceAll(*account.Name, "\n", ""), "\r", "")
-		*account.Id = strings.ReplaceAll(strings.ReplaceAll(*account.Id, "\n", ""), "\r", "")
-
 		slog.Debug(string(jsonResult))
 	}
 
