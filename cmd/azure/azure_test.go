@@ -654,3 +654,126 @@ func TestGetAFDCustomDomains(t *testing.T) {
 		})
 	}
 }
+
+func TestGetCustomDomains(t *testing.T) {
+	profileResponse := armcdn.ProfilesClientListResponse{
+		ProfileListResult: armcdn.ProfileListResult{
+			Value: []*armcdn.Profile{
+				{
+					ID:   to.Ptr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Cdn/profiles/profile1"),
+					Name: to.Ptr("profile1"),
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		name          string
+		factoryErr    error
+		setupMocks    func() *mockClientFactory
+		wantResources []string
+		wantError     string
+	}{
+		{
+			name:       "client factory creation fails",
+			factoryErr: errors.New("boom"),
+			setupMocks: func() *mockClientFactory { return &mockClientFactory{} },
+			wantError:  "failed to create clientFactory",
+		},
+		{
+			name: "successful custom domain collection",
+			setupMocks: func() *mockClientFactory {
+				mockFactory := &mockClientFactory{}
+
+				profilesClient := &mockAFDProfilesClient{}
+				profilesPager := &mockAFDProfilesPager{}
+				profilesPager.On("More").Return(true).Once()
+				profilesPager.On("More").Return(false).Once()
+				profilesPager.On("NextPage", mock.Anything).Return(profileResponse, nil).Once()
+				profilesClient.On("NewListPager", (*armcdn.ProfilesClientListOptions)(nil)).Return(profilesPager)
+				mockFactory.On("NewAFDProfilesClient").Return(profilesClient)
+
+				domainsClient := &mockAFDCustomDomainsClient{}
+				domainsPager := &mockAFDCustomDomainsPager{}
+				domainsResponse := armcdn.AFDCustomDomainsClientListByProfileResponse{
+					AFDDomainListResult: armcdn.AFDDomainListResult{
+						Value: []*armcdn.AFDDomain{
+							{Properties: &armcdn.AFDDomainProperties{HostName: to.Ptr("custom.example.com")}},
+						},
+					},
+				}
+				domainsPager.On("More").Return(true).Once()
+				domainsPager.On("More").Return(false).Once()
+				domainsPager.On("NextPage", mock.Anything).Return(domainsResponse, nil).Once()
+				domainsClient.On("NewListByProfilePager", "rg1", "profile1", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(domainsPager)
+				mockFactory.On("NewAFDCustomDomainsClient").Return(domainsClient)
+
+				return mockFactory
+			},
+			wantResources: []string{"custom.example.com"},
+		},
+		{
+			name: "profile retrieval fails",
+			setupMocks: func() *mockClientFactory {
+				mockFactory := &mockClientFactory{}
+				profilesClient := &mockAFDProfilesClient{}
+				profilesPager := &mockAFDProfilesPager{}
+				profilesPager.On("More").Return(true).Once()
+				profilesPager.On("NextPage", mock.Anything).Return(armcdn.ProfilesClientListResponse{}, errors.New("profile boom"))
+				profilesClient.On("NewListPager", (*armcdn.ProfilesClientListOptions)(nil)).Return(profilesPager)
+				mockFactory.On("NewAFDProfilesClient").Return(profilesClient)
+				return mockFactory
+			},
+			wantError: "failed to get profile",
+		},
+		{
+			name: "custom domain retrieval fails",
+			setupMocks: func() *mockClientFactory {
+				mockFactory := &mockClientFactory{}
+				profilesClient := &mockAFDProfilesClient{}
+				profilesPager := &mockAFDProfilesPager{}
+				profilesPager.On("More").Return(true).Once()
+				profilesPager.On("More").Return(false).Once()
+				profilesPager.On("NextPage", mock.Anything).Return(profileResponse, nil).Once()
+				profilesClient.On("NewListPager", (*armcdn.ProfilesClientListOptions)(nil)).Return(profilesPager)
+				mockFactory.On("NewAFDProfilesClient").Return(profilesClient)
+
+				domainsClient := &mockAFDCustomDomainsClient{}
+				domainsPager := &mockAFDCustomDomainsPager{}
+				domainsPager.On("More").Return(true).Once()
+				domainsPager.On("NextPage", mock.Anything).Return(armcdn.AFDCustomDomainsClientListByProfileResponse{}, errors.New("domain boom"))
+				domainsClient.On("NewListByProfilePager", "rg1", "profile1", (*armcdn.AFDCustomDomainsClientListByProfileOptions)(nil)).Return(domainsPager)
+				mockFactory.On("NewAFDCustomDomainsClient").Return(domainsClient)
+
+				return mockFactory
+			},
+			wantError: "failed to get custom domains",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockFactory := tt.setupMocks()
+			resources := make(map[string]struct{})
+
+			newClientFactory := func(subscriptionID string) (ClientFactory, error) {
+				if tt.factoryErr != nil {
+					return nil, tt.factoryErr
+				}
+				return mockFactory, nil
+			}
+
+			err := getCustomDomains(resources, []string{"sub1"}, newClientFactory)
+
+			if tt.wantError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantError)
+			} else {
+				assert.NoError(t, err)
+				for _, r := range tt.wantResources {
+					assert.Contains(t, resources, r)
+				}
+			}
+		})
+	}
+}

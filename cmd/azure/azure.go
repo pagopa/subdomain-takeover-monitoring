@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"subdomain/internal/pkg/logger"
+	"subdomain/internal/pkg/selftest"
 	"subdomain/internal/pkg/slack"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -160,7 +161,6 @@ func getDnsCNAMERecords(resources map[string]struct{}, dnsZone armdns.Zone, subs
 	}
 
 	return vulnerableResources, nil
-
 }
 
 func isVulnerableResource(resources map[string]struct{}, cname string) bool {
@@ -201,12 +201,28 @@ func getAllAzureSubscriptions() ([]string, error) {
 	return subscriptionIDs, nil
 }
 
-func HandleRequest(ctx context.Context, event interface{}) (string, error) {
+func HandleRequest(ctx context.Context, event interface{}) (result string, err error) {
 	credential, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain a credential: %v", err)
 	}
 	cntx := context.Background()
+
+	selfTestSubscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID")
+	// Create the canary before scanning so the scan detects it
+	canary, err := selftest.SetupAzureDanglingCNAME(cntx, credential, selfTestSubscriptionID)
+	defer func() {
+		if terr := canary.Teardown(credential); terr != nil {
+			slog.Error("canary teardown failed", "Error", terr.Error())
+			if err == nil {
+				err = fmt.Errorf("canary teardown failed: %w", terr)
+			}
+		}
+	}()
+	if err != nil {
+		return "", fmt.Errorf("canary setup failed: %w", err)
+	}
+
 	resourceGraphClientFactory, err := armresourcegraph.NewClientFactory(credential, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create resource graph client: %v", err)
@@ -262,7 +278,20 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 	// Unfortunately, custom domains are not available in the Azure Resource Graph, so the
 	// information must be retrieved via the ARM API.
 
-	getCustomDomains(allVulnerableResources, subscriptionIDs)
+	if err := getCustomDomains(allVulnerableResources, subscriptionIDs, func(sub string) (ClientFactory, error) {
+		clientFactory, err := armcdn.NewClientFactory(sub, credential, nil)
+		if err != nil {
+			return nil, err
+		}
+		return &wrapperClientFactory{client: clientFactory}, nil
+	}); err != nil {
+		return "", fmt.Errorf("failed to get custom domains: %w", err)
+	}
+
+	// The canary storage account was deleted during setup, but Resource Graph is
+	// eventually consistent and may still list it. Drop it so the canary is
+	// correctly detected as dangling.
+	delete(allVulnerableResources, canary.StorageCNAME())
 
 	var detectedVulnerabilities []string
 	for _, subscriptionID := range subscriptionIDs {
@@ -281,6 +310,11 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 				return "", fmt.Errorf("dnsZonesPager failed to advance page: %v", err)
 			}
 			for _, dnsZone := range page.Value {
+				// Skip leftover self-test zones from previous runs, but keep our own
+				// canary so the scan can detect it.
+				if rg, rgErr := getResourceGroupFromResourceID(*dnsZone.ID); rgErr == nil && selftest.IsSelfTestZone(rg) && rg != canary.RGName {
+					continue
+				}
 				cnameRecords, err := getDnsCNAMERecords(allVulnerableResources, *dnsZone, subscriptionID)
 				if err != nil {
 					return "", err
@@ -290,9 +324,13 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 		}
 	}
 	slog.Info("Subdomain takeover monitoring tool has correctly verified all Azure accounts belonging to organization.")
-	err = slack.SendSlackNotification(detectedVulnerabilities, AZURE_ORG)
 
-	if err != nil {
+	// Separate the real dangling records from the canary
+	realItems, canaryFound := canary.Split(detectedVulnerabilities)
+
+	slackChannelID := os.Getenv("CHANNEL_ID")
+	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
+	if err = slack.NotifyScanResult(AZURE_ORG, slackChannelID, slackChannelIDDebug, realItems, canaryFound); err != nil {
 		return "", fmt.Errorf("slack notification failed %v", err)
 	}
 	slog.Debug("Subdomain takeover monitoring tool sent the result of execution via Slack.")
@@ -304,24 +342,18 @@ func HandleRequest(ctx context.Context, event interface{}) (string, error) {
 // Parameters:
 //   - allVulnerableResources: map to store discovered custom domain names
 //   - subscriptionIDs: slice of Azure subscription IDs to scan
+//   - newClientFactory: builds an AFD client factory for a subscription
 //
-// Returns error if authentication, client creation, or API calls fail
-func getCustomDomains(allVulnerableResources map[string]struct{}, subscriptionIDs []string) error {
-	// Initialize Azure authentication using default credential chain
-	// (environment variables, managed identity, Azure CLI, etc.)
-	credential, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		return fmt.Errorf("failed to obtain a credential: %v", err)
-	}
+// Returns error if client creation or API calls fail
+func getCustomDomains(allVulnerableResources map[string]struct{}, subscriptionIDs []string, newClientFactory func(subscriptionID string) (ClientFactory, error)) error {
 	ctx := context.Background()
 	// Iterate through each provided subscription
 	for _, sub := range subscriptionIDs {
-		clientFactory, err := armcdn.NewClientFactory(sub, credential, nil)
+		client, err := newClientFactory(sub)
 		if err != nil {
 			return fmt.Errorf("failed to create clientFactory: %v", err)
 		}
 		// Get all AFD profiles in the current subscription
-		client := &wrapperClientFactory{client: clientFactory}
 		profiles, err := getAFDProfile(client, ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get profile: %v", err)
