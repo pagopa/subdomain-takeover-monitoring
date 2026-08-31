@@ -1,9 +1,12 @@
 resource "null_resource" "verify-takeover_binary" {
   triggers = {
-    build_trigger = sha256(join("", [
-      filesha256("${local.aws_verify-takeover_src_path}"),
-      filesha256("${path.module}/../internal/pkg/slack/slack.go")
-    ]))
+    build_trigger = sha256(join("", concat(
+      [
+        filesha256(local.aws_verify-takeover_src_path),
+        filesha256("${path.module}/../internal/pkg/slack/slack.go"),
+      ],
+      [for f in fileset("${path.module}/../internal/pkg/selftest", "*.go") : filesha256("${path.module}/../internal/pkg/selftest/${f}")]
+    )))
   }
   provisioner "local-exec" {
     command = "GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ${local.aws_verify-takeover_binary_path} ${local.aws_verify-takeover_src_path}"
@@ -101,4 +104,44 @@ resource "aws_iam_policy" "prodsec_cross_account_policy" {
 resource "aws_iam_role_policy_attachment" "attach-prodsec-cross-account-verify-takeover" {
   role       = module.lambda_aws_verify-takeover.lambda_role_name
   policy_arn = aws_iam_policy.prodsec_cross_account_policy.arn
+}
+
+resource "aws_iam_policy" "unhappy_check_policy" {
+  name        = "UnhappyCheckPolicy-${var.env}"
+  description = "Allows the verify-takeover Lambda to create and delete the self-test canary (Route53 zone + S3 bucket) in its own account"
+  tags        = var.tags
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "route53:CreateHostedZone",
+          "route53:DeleteHostedZone",
+          "route53:ChangeResourceRecordSets",
+          "route53:ListResourceRecordSets"
+        ],
+        Resource = "*"
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "s3:CreateBucket",
+          "s3:DeleteBucket",
+          "s3:ListBucket",
+          "s3:DeleteObject"
+        ],
+        Resource = [
+          "arn:aws:s3:::subdomain.*",
+          "arn:aws:s3:::subdomain.*/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "attach-unhappy-check-verify-takeover" {
+  role       = module.lambda_aws_verify-takeover.lambda_role_name
+  policy_arn = aws_iam_policy.unhappy_check_policy.arn
 }

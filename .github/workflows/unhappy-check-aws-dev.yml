@@ -1,9 +1,6 @@
 name: AWS dev unhappy path check
 
 on:
-  push:
-    branches:
-      - develop
   workflow_dispatch:
 jobs:
   setup:
