@@ -1,8 +1,6 @@
 module subdomain
 
-go 1.24.0
-
-toolchain go1.24.1
+go 1.25
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.0
@@ -16,9 +14,9 @@ require (
 	github.com/aws/aws-lambda-go v1.47.0
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.59
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.14
+	github.com/slack-go/slack v0.23.1
+	github.com/stretchr/testify v1.11.1
 	github.com/aws/smithy-go v1.24.2
-	github.com/slack-go/slack v0.13.1
-	github.com/stretchr/testify v1.10.0
 )
 
 require (
