@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"subdomain/internal/pkg/logger"
+	"subdomain/internal/pkg/selftest"
 	"subdomain/internal/pkg/slack"
 
 	"net/url"
@@ -45,9 +46,34 @@ type ExtractedResult struct {
 	Type            string //S3, Elasticbeanstalk
 }
 
-func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
+func HandleRequest(ctx context.Context, event events.SQSEvent) (result string, err error) {
+	slackChannelID := os.Getenv("CHANNEL_ID")
+	slackChannelIDDebug := os.Getenv("CHANNEL_ID_DEBUG")
+
+	// Create clients in the Lambda's own account for the self-test canary.
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to load AWS config: %w", err)
+	}
+	r53OwnClient := route53.NewFromConfig(cfg)
+	s3OwnClient := s3.NewFromConfig(cfg, func(o *s3.Options) { o.Region = REGION })
+
+	// Create the canary before scanning so the scan detects it like any other
+	// dangling record. Teardown is deferred so the resources are always removed.
+	canary, err := selftest.SetupDanglingCNAME(ctx, r53OwnClient, s3OwnClient, REGION)
+	defer func() {
+		if terr := canary.Teardown(ctx, r53OwnClient, s3OwnClient); terr != nil {
+			slog.Error("canary teardown failed", "Error", terr.Error())
+			if err == nil {
+				err = fmt.Errorf("canary teardown failed: %w", terr)
+			}
+		}
+	}()
+	if err != nil {
+		return "", fmt.Errorf("canary setup failed: %w", err)
+	}
+
 	var vulnerableItemsOrg []string
-	var err error
 	for _, record := range event.Records {
 		vulnerableItemsOrg, err = processMessage(record)
 		if err != nil {
@@ -56,9 +82,10 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) (string, error) {
 	}
 	slog.Info("Subdomain takeover monitoring tool has correctly verified all AWS accounts belonging to organization.")
 
-	//Send alert on Slack
-	err = slack.SendSlackNotification(vulnerableItemsOrg, AWS_ORG)
-	if err != nil {
+	// Separate the real dangling records from the canary planted for the self-test.
+	realItems, canaryFound := canary.Split(vulnerableItemsOrg)
+
+	if err = slack.NotifyScanResult(AWS_ORG, slackChannelID, slackChannelIDDebug, realItems, canaryFound); err != nil {
 		return "", fmt.Errorf("slack notification failed %v ", err)
 	}
 
@@ -120,7 +147,10 @@ func processAccount(account *types.Account) ([]string, map[string]*route53.ListR
 	if err != nil {
 		return nil, nil, err
 	}
-	slog.Debug(fmt.Sprintf("Resources vulnerable to subdomain takeover for account %s - %s:\n", *account.Name, *account.Id))
+	// Strip CR/LF from user-provided account fields to prevent log injection.
+	safeAccountName := strings.ReplaceAll(strings.ReplaceAll(*account.Name, "\n", ""), "\r", "")
+	safeAccountID := strings.ReplaceAll(strings.ReplaceAll(*account.Id, "\n", ""), "\r", "")
+	slog.Debug("Resources vulnerable to subdomain takeover for account", "name", safeAccountName, "id", safeAccountID)
 	slog.Debug("Listed account's EBS")
 
 	//Verify takeover
@@ -128,9 +158,6 @@ func processAccount(account *types.Account) ([]string, map[string]*route53.ListR
 
 	if len(vulnerableAWSResources) > 0 {
 		jsonResult, _ := json.Marshal(vulnerableAWSResources)
-		*account.Name = strings.ReplaceAll(strings.ReplaceAll(*account.Name, "\n", ""), "\r", "")
-		*account.Id = strings.ReplaceAll(strings.ReplaceAll(*account.Id, "\n", ""), "\r", "")
-
 		slog.Debug(string(jsonResult))
 	}
 
@@ -218,8 +245,14 @@ func listPotentialVulnerableDNSRecord(r53Client *route53.Client, DNSZonesPoiting
 
 func checkPresenceAwsResource(record *route53Types.ResourceRecordSet, hostedZone route53Types.HostedZone, AWSResourceOutput map[string]*ExtractedResult) {
 	tmpExtractedResult := &ExtractedResult{ResourceDNSName: "", Found: false, Name: "", Type: ""}
-	u, _ := url.Parse(*record.ResourceRecords[0].Value)
-	tmpExtractedResult.ResourceDNSName = strings.ToLower(u.Host)
+	// CNAME values have no scheme, so prepend "//" (when absent) to make url.Parse
+	// populate Host instead of dumping the whole value into Path.
+	parseValue := strings.TrimSpace(*record.ResourceRecords[0].Value)
+	if !strings.Contains(parseValue, "://") {
+		parseValue = "//" + parseValue
+	}
+	u, _ := url.Parse(parseValue)
+	tmpExtractedResult.ResourceDNSName = strings.TrimRight(strings.ToLower(u.Host), ".")
 	tmpExtractedResult.Found = true
 	tmpExtractedResult.Name = strings.ToLower(strings.TrimRight(strings.TrimSpace(*record.Name), "."))
 	tmpExtractedResult.HostedZoneName = *hostedZone.Name
@@ -262,7 +295,13 @@ func listS3Buckets(s3Client *s3.Client, AWSResources map[string]bool) error {
 	return nil
 }
 
-func listEBSEnvironment(ebsClient *elasticbeanstalk.Client, AWSResources map[string]bool) error {
+// ebsDescribeEnvironmentsAPI is the subset of the Elastic Beanstalk client used
+// to list environments, defined here so it can be mocked in tests.
+type ebsDescribeEnvironmentsAPI interface {
+	DescribeEnvironments(ctx context.Context, params *elasticbeanstalk.DescribeEnvironmentsInput, optFns ...func(*elasticbeanstalk.Options)) (*elasticbeanstalk.DescribeEnvironmentsOutput, error)
+}
+
+func listEBSEnvironment(ebsClient ebsDescribeEnvironmentsAPI, AWSResources map[string]bool) error {
 	//Pagination
 	pagination := true
 	var nextMarker *string
