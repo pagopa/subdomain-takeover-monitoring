@@ -1,9 +1,12 @@
 resource "null_resource" "azure_function_binary" {
   triggers = {
-    build_trigger = sha256(join("", [
-      filesha256("${local.azure_src_path}"),
-      filesha256("${path.module}/../internal/pkg/slack/slack.go")
-    ]))
+    build_trigger = sha256(join("", concat(
+      [
+        filesha256(local.azure_src_path),
+        filesha256("${path.module}/../internal/pkg/slack/slack.go"),
+      ],
+      [for f in fileset("${path.module}/../internal/pkg/selftest", "*.go") : filesha256("${path.module}/../internal/pkg/selftest/${f}")]
+    )))
   }
 
   provisioner "local-exec" {
@@ -28,6 +31,9 @@ data "aws_ssm_parameter" "azure_client_id" {
 
 data "aws_ssm_parameter" "azure_client_secret" {
   name = "AZURE_CLIENT_SECRET"
+}
+data "aws_ssm_parameter" "azure_subscription_id" {
+  name = "AZURE_SUBSCRIPTION_ID"
 }
 data "aws_ssm_parameter" "slack_token" {
   name = "SLACK_TOKEN"
@@ -63,12 +69,13 @@ module "lambda_azure" {
 
 
   environment_variables = {
-    SLACK_TOKEN         = data.aws_ssm_parameter.slack_token.value,
-    CHANNEL_ID          = data.aws_ssm_parameter.channel_id.value,
-    CHANNEL_ID_DEBUG    = data.aws_ssm_parameter.channel_id_debug.value,
-    AZURE_TENANT_ID     = data.aws_ssm_parameter.azure_tenant_id.value,
-    AZURE_CLIENT_ID     = data.aws_ssm_parameter.azure_client_id.value,
-    AZURE_CLIENT_SECRET = data.aws_ssm_parameter.azure_client_secret.value
+    SLACK_TOKEN           = data.aws_ssm_parameter.slack_token.value,
+    CHANNEL_ID            = data.aws_ssm_parameter.channel_id.value,
+    CHANNEL_ID_DEBUG      = data.aws_ssm_parameter.channel_id_debug.value,
+    AZURE_TENANT_ID       = data.aws_ssm_parameter.azure_tenant_id.value,
+    AZURE_CLIENT_ID       = data.aws_ssm_parameter.azure_client_id.value,
+    AZURE_CLIENT_SECRET   = data.aws_ssm_parameter.azure_client_secret.value,
+    AZURE_SUBSCRIPTION_ID = data.aws_ssm_parameter.azure_subscription_id.value
   }
 
 
