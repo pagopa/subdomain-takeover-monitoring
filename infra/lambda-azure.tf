@@ -1,27 +1,3 @@
-resource "null_resource" "azure_function_binary" {
-  triggers = {
-    build_trigger = sha256(join("", concat(
-      [
-        filesha256(local.azure_src_path),
-        filesha256("${path.module}/../internal/pkg/slack/slack.go"),
-      ],
-      [for f in fileset("${path.module}/../internal/pkg/selftest", "*.go") : filesha256("${path.module}/../internal/pkg/selftest/${f}")]
-    )))
-  }
-
-  provisioner "local-exec" {
-    command = "GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ${local.azure_binary_path} ${local.azure_src_path} && cp ${local.query_src_path} ${local.query_binary_path} "
-  }
-}
-
-// zip the binary, as we can upload only zip files to AWS lambda
-data "archive_file" "azure_function_archive" {
-  depends_on  = [null_resource.azure_function_binary]
-  type        = "zip"
-  source_dir  = local.azure_dir_path
-  output_path = local.azure_archive_path
-}
-
 data "aws_ssm_parameter" "azure_tenant_id" {
   name = "AZURE_TENANT_ID"
 }
@@ -52,16 +28,13 @@ data "aws_ssm_parameter" "log_level" {
 module "lambda_azure" {
   source = "git::https://github.com/terraform-aws-modules/terraform-aws-lambda.git?ref=b88a85627c84a4e9d1ad2a655455d10b386bc63f"
   #version = "7.7.0"
-  depends_on = [
-    data.archive_file.azure_function_archive
-  ]
   function_name           = "azure-lambda-${var.env}"
   description             = "Lambda function used for the azure subdomaintakeover script in ${var.env} environment"
   runtime                 = "provided.al2023"
   architectures           = ["arm64"]
   handler                 = "bootstrap"
   create_package          = false
-  local_existing_package  = data.archive_file.azure_function_archive.output_path
+  local_existing_package  = local.azure_archive_path
   ignore_source_code_hash = false
 
   publish = true
