@@ -19,3 +19,8 @@ variable "github_repository" {
 variable "env" {
   type = string
 }
+
+variable "s3_tf_state_bucket" {
+  type        = string
+  description = "Name of the S3 bucket holding the Terraform state, used to scope the deploy pipeline role permissions"
+}

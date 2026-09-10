@@ -14,7 +14,7 @@ jobs:
     - name: 'Checkout head branch'
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7
       with:
-        ref: ${{ github.event.pull_request.head.sha }}
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e #v7
@@ -38,7 +38,7 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7
       with:
         path: base
-        ref: ${{ github.event.pull_request.base.sha }}
+        ref: ${{ github.event.pull_request.base.sha || github.sha }}
 
     - name: 'Compute before coverage'
       working-directory: base

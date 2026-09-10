@@ -9,3 +9,4 @@ tags = {
 
 aws_region ="eu-south-1"
 env = "dev"
+s3_tf_state_bucket = "terraform-state-1719398943"
