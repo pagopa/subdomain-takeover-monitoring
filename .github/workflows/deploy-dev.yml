@@ -40,4 +40,5 @@ jobs:
       - name: Run terraform apply
         run: |
           cd infra
+          chmod +x ./terraform.sh
           ./terraform.sh apply dev -auto-approve
