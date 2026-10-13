@@ -46,7 +46,7 @@ resource "aws_iam_role_policy_attachment" "subdomain_health_check" {
   policy_arn = aws_iam_policy.subdomain_health_check_policy.id
 }
 
-resource "aws_iam_role" "github_deploy_pipeline_role" {
+resource "aws_iam_role" "github_deploy_role" {
   name        = "SubdomainTakeoverDeployPipelineRole-${var.env}"
   description = "Role assumed by the GitHub Actions deploy pipeline to apply Terraform in ${var.env} environment"
 
@@ -60,14 +60,9 @@ resource "aws_iam_role" "github_deploy_pipeline_role" {
         },
         Action = "sts:AssumeRoleWithWebIdentity",
         Condition = {
-          StringLike = {
-            "token.actions.githubusercontent.com:sub" : [
-              "repo:${var.github_repository}:environment:${var.env}"
-            ]
-          },
-          "ForAllValues:StringEquals" = {
-            "token.actions.githubusercontent.com:iss" : "https://token.actions.githubusercontent.com",
-            "token.actions.githubusercontent.com:aud" : "sts.amazonaws.com"
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" : "sts.amazonaws.com",
+            "token.actions.githubusercontent.com:sub" : "repo:${var.github_repository}:environment:${var.env}"
           }
         }
       }
@@ -77,23 +72,9 @@ resource "aws_iam_role" "github_deploy_pipeline_role" {
   tags = var.tags
 }
 
-resource "aws_iam_policy" "subdomain_deploy_pipeline_policy" {
-  name        = "SubdomainDeployPipelinePolicy-${var.env}"
-  description = "Permissions for the GitHub Actions deploy pipeline to apply Terraform in ${var.env} environment"
-
-  policy = templatefile("iam_policies/deploy-pipeline-policy.json.tmpl", {
-    region             = var.aws_region
-    env                = var.env
-    account_id         = data.aws_caller_identity.current.account_id
-    s3_tf_state_bucket = var.s3_tf_state_bucket
-  })
-
-  tags = var.tags
-}
-
-resource "aws_iam_role_policy_attachment" "subdomain_deploy_pipeline" {
-  role       = aws_iam_role.github_deploy_pipeline_role.name
-  policy_arn = aws_iam_policy.subdomain_deploy_pipeline_policy.arn
+resource "aws_iam_role_policy_attachment" "github_deploy_admin" {
+  role       = aws_iam_role.github_deploy_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
