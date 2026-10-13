@@ -17,17 +17,17 @@ The repository is organized into two main directories:
 
 ## Prerequisites
 
-Before you can deploy this application, you'll need to build the Golang binaries. After cloning the repository, run the following commands in your terminal:
+Before you can deploy this application, you'll need to build the Lambda packages (requires `go` and `zip`). After cloning the repository, run the following commands in your terminal:
 
 ```bash
-# Build the Azure Lambda function binary and copy the query file
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ./infra/tf_generated_azure/src/bootstrap ./cmd/azure/azure.go && cp ./assets/img/queries/query_azure ./infra/tf_generated_azure/src/query
- 
-# Build the AWS List Accounts Lambda function binary
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ./infra/tf_generated_aws_list-lambda/src/bootstrap ./cmd/aws/list-lambda/list-lambda.go
- 
-# Build the AWS Verify Takeover Lambda function binary
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ./infra/tf_generated_aws_verify-takeover/src/bootstrap ./cmd/aws/verify-takeover/verify-takeover.go
+# Build the binaries into release/ and the Lambda zips into infra/tf_generated_*/v1/
+make build
+```
+
+To remove the build artifacts when you no longer need them:
+
+```bash
+make clean
 ```
 -----
 
