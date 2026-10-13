@@ -1,39 +1,13 @@
-resource "null_resource" "verify-takeover_binary" {
-  triggers = {
-    build_trigger = sha256(join("", concat(
-      [
-        filesha256(local.aws_verify-takeover_src_path),
-        filesha256("${path.module}/../internal/pkg/slack/slack.go"),
-      ],
-      [for f in fileset("${path.module}/../internal/pkg/selftest", "*.go") : filesha256("${path.module}/../internal/pkg/selftest/${f}")]
-    )))
-  }
-  provisioner "local-exec" {
-    command = "GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ${local.aws_verify-takeover_binary_path} ${local.aws_verify-takeover_src_path}"
-  }
-}
-
-// zip the binary, as we can upload only zip files to AWS lambda
-data "archive_file" "aws_verify-takeover_function_archive" {
-  depends_on  = [null_resource.verify-takeover_binary]
-  type        = "zip"
-  source_dir  = local.aws_verify-takeover_dir_path
-  output_path = local.aws_verify-takeover_archive_path
-}
-
 module "lambda_aws_verify-takeover" {
   source = "git::https://github.com/terraform-aws-modules/terraform-aws-lambda.git?ref=b88a85627c84a4e9d1ad2a655455d10b386bc63f"
   #version = "7.7.0"
-  depends_on = [
-    data.archive_file.aws_verify-takeover_function_archive
-  ]
   function_name           = "aws_verify-takeover-${var.env}"
   description             = "Lambda function used to verify subdomain takeover into AWS accounts of organization for ${var.env} environment"
   runtime                 = "provided.al2023"
   architectures           = ["arm64"]
   handler                 = "bootstrap"
   create_package          = false
-  local_existing_package  = data.archive_file.aws_verify-takeover_function_archive.output_path
+  local_existing_package  = local.aws_verify-takeover_archive_path
   ignore_source_code_hash = false
 
   publish = true

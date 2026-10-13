@@ -12,15 +12,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: 'Checkout head branch'
-      uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7
       with:
         ref: ${{ github.event.pull_request.head.sha }}
 
     - name: Set up Go
-      uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e #v7
       with:
         go-version-file: 'go.mod'
-    
+
+    - name: Build
+      run: make build
+
     - name: 'Compute after coverage'
       shell: bash
       run: |
@@ -32,7 +35,7 @@ jobs:
         cat after.cover
     
     - name: 'Checkout base branch'
-      uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7
       with:
         path: base
         ref: ${{ github.event.pull_request.base.sha }}
@@ -77,28 +80,37 @@ jobs:
         done
 
         > diff_raw
+        has_regression=0
+
         for pkg in "${!all_pkgs[@]}"; do
           before="${coverage_before[$pkg]}"
           after="${coverage_after[$pkg]}"
 
-          if [[ -z "$before" ]]; then # len(before)=0
-            echo "| $pkg | - | ${after}% | " >> diff_raw
+          if [[ -z "$before" ]]; then
+            echo "| $pkg | - | ${after}% | New Package |" >> diff_raw
             continue
-          elif [[ -z "$after" ]]; then # len(after)=0
-            echo "| $pkg | ${before}% | - |" >> diff_raw
-            exit 1
           fi
 
-          if [[ "$before" -gt "$after" ]]; then # before > after
-            echo "| $pkg | Coverave before > coverage after | $before vs $after"
-            exit 1
+          if awk -v b="$before" -v a="$after" 'BEGIN { exit (b > a ? 0 : 1) }'; then
+            echo "| $pkg | ${before}% | ${after}% | Regressed |" >> diff_raw
+            has_regression=1
           else
-            echo "| $pkg | ${before}% | ${after}% |" >> diff_raw
+            echo "| $pkg | ${before}% | ${after}% | OK |" >> diff_raw
           fi
         done
 
-        echo "Test coverage changes:" > diff
-        echo "| Package | Before | After | " >> diff
+        echo "### Test coverage changes:" > diff
+        echo "| Package | Before | After | Status |" >> diff
+        echo "|---|---|---|---|" >> diff
         cat diff_raw | sort >> diff
 
         cat diff
+
+        # Print table into the summary of github action
+        cat diff >> $GITHUB_STEP_SUMMARY
+
+        # If there had been regression, test fails
+        if [[ "$has_regression" -eq 1 ]]; then
+          echo -e "\n Error: Coverage regression or dropped tests detected. Please check the table above."
+          exit 1
+        fi

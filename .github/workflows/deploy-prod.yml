@@ -1,0 +1,44 @@
+name: Deploy resources in prod environment
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write # This is required for requesting the OIDC JWT (AWS auth)
+  contents: read  # This is required for actions/checkout
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    environment: prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e #v7
+        with:
+          go-version-file: ./go.mod
+
+      - name: Build
+        run: make build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 #v6 immutable
+        with:
+          role-to-assume: ${{ secrets.PROD_ARN_ROLE_DEPLOY }}
+          aws-region: ${{ vars.REGION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e #v4.0.1
+        with:
+          terraform_version: '1.9.3'
+
+      - name: Run terraform apply
+        run: |
+          cd infra
+          chmod +x ./terraform.sh
+          ./terraform.sh apply prod -auto-approve

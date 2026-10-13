@@ -46,6 +46,37 @@ resource "aws_iam_role_policy_attachment" "subdomain_health_check" {
   policy_arn = aws_iam_policy.subdomain_health_check_policy.id
 }
 
+resource "aws_iam_role" "github_deploy_role" {
+  name        = "SubdomainTakeoverDeployPipelineRole-${var.env}"
+  description = "Role assumed by the GitHub Actions deploy pipeline to apply Terraform in ${var.env} environment"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = {
+          "Federated" : "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
+        },
+        Action = "sts:AssumeRoleWithWebIdentity",
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" : "sts.amazonaws.com",
+            "token.actions.githubusercontent.com:sub" : "repo:${var.github_repository}:environment:${var.env}"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "github_deploy_admin" {
+  role       = aws_iam_role.github_deploy_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 

@@ -33,9 +33,10 @@ override.tf.json
 .terraformrc
 terraform.rc
 
-infra/tf_generated_azure
-infra/tf_generated_aws_list-lambda
-infra/tf_generated_aws_verify-takeover
+# Build artifacts produced by `make build` (binaries + lambda zip packages)
+release/
+infra/tf_generated_*/
+infra/tf_generated_*/**/*.zip
 cmd/parsing/
 
 .DS_Store

@@ -5,11 +5,20 @@
       "Effect":"Allow",
       "Action":[
         "s3:GetObject",
-        "s3:ListBucket",
-        "s3:PutObject"
+        "s3:PutObject",
+        "s3:DeleteObject"
       ],
       "Resource":[
         "arn:aws:s3:::${s3_tf_state_bucket}/state/*"
+      ]
+    },
+    {
+      "Effect":"Allow",
+      "Action":[
+        "s3:ListBucket"
+      ],
+      "Resource":[
+        "arn:aws:s3:::${s3_tf_state_bucket}"
       ]
     },
     {
@@ -21,11 +30,15 @@
         "lambda:GetFunctionConfiguration",
         "lambda:AddPermission",
         "lambda:GetFunction",
+        "lambda:DeleteFunction",
         "lambda:ListVersionsByFunction",
         "lambda:GetFunctionCodeSigningConfig",
         "lambda:GetPolicy",
         "lambda:PublishVersion",
-        "lambda:RemovePermission"
+        "lambda:RemovePermission",
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:ListTags"
       ],
       "Resource": [
         "arn:aws:lambda:${region}:${account_id}:function:aws_list-accounts-${env}",
@@ -39,10 +52,13 @@
     {
       "Effect": "Allow",
       "Action": [
-        "lambda:GetEventSourceMapping"
+        "lambda:GetEventSourceMapping",
+        "lambda:CreateEventSourceMapping",
+        "lambda:UpdateEventSourceMapping",
+        "lambda:DeleteEventSourceMapping"
       ],
       "Resource": [
-        "arn:aws:lambda:${region}:${account_id}:event-source-mapping:*"
+        "*"
       ]
     },
     {
@@ -58,8 +74,20 @@
       "Effect":"Allow",
       "Action":[
          "iam:GetRole",
+         "iam:CreateRole",
+         "iam:DeleteRole",
+         "iam:UpdateRole",
+         "iam:UpdateAssumeRolePolicy",
+         "iam:ListRoleTags",
+         "iam:TagRole",
+         "iam:UntagRole",
          "iam:ListRolePolicies",
-         "iam:ListAttachedRolePolicies"
+         "iam:ListAttachedRolePolicies",
+         "iam:GetRolePolicy",
+         "iam:PutRolePolicy",
+         "iam:DeleteRolePolicy",
+         "iam:AttachRolePolicy",
+         "iam:DetachRolePolicy"
       ],
       "Resource":[
         "arn:aws:iam::${account_id}:role/SubdomainTakeoverHealthCheckRole-${env}",
@@ -72,14 +100,32 @@
     {
       "Effect":"Allow",
       "Action":[
+         "iam:PassRole"
+      ],
+      "Resource":[
+        "arn:aws:iam::${account_id}:role/aws_list-accounts-${env}",
+        "arn:aws:iam::${account_id}:role/aws_verify-takeover-${env}",
+        "arn:aws:iam::${account_id}:role/azure-lambda-${env}"
+      ]
+    },
+    {
+      "Effect":"Allow",
+      "Action":[
          "iam:GetPolicy",
+         "iam:CreatePolicy",
+         "iam:DeletePolicy",
          "iam:GetPolicyVersion",
          "iam:ListPolicyVersions",
-         "iam:CreatePolicyVersion"
+         "iam:CreatePolicyVersion",
+         "iam:DeletePolicyVersion",
+         "iam:ListPolicyTags",
+         "iam:TagPolicy",
+         "iam:UntagPolicy"
       ],
       "Resource":[
         "arn:aws:iam::${account_id}:policy/SubdomainHealtCheckPolicy-${env}",
         "arn:aws:iam::${account_id}:policy/SubdomainDeployPipelinePolicy-${env}",
+        "arn:aws:iam::${account_id}:policy/UnhappyCheckPolicy-${env}",
         "arn:aws:iam::${account_id}:policy/cross-account-role-policy-${env}",
         "arn:aws:iam::${account_id}:policy/ProdSecCrossAccountPolicy-${env}",
         "arn:aws:iam::${account_id}:policy/sqs-write-policy-${env}",
@@ -91,7 +137,15 @@
     {
       "Effect":"Allow",
       "Action":[
-         "iam:GetOpenIDConnectProvider"
+         "iam:GetOpenIDConnectProvider",
+         "iam:CreateOpenIDConnectProvider",
+         "iam:DeleteOpenIDConnectProvider",
+         "iam:UpdateOpenIDConnectProviderThumbprint",
+         "iam:AddClientIDToOpenIDConnectProvider",
+         "iam:RemoveClientIDFromOpenIDConnectProvider",
+         "iam:ListOpenIDConnectProviderTags",
+         "iam:TagOpenIDConnectProvider",
+         "iam:UntagOpenIDConnectProvider"
       ],
       "Resource":[
         "arn:aws:iam::${account_id}:oidc-provider/token.actions.githubusercontent.com"
@@ -110,8 +164,16 @@
       "Effect":"Allow",
       "Action":[
          "events:DescribeRule",
+         "events:PutRule",
+         "events:DeleteRule",
+         "events:EnableRule",
+         "events:DisableRule",
+         "events:PutTargets",
+         "events:RemoveTargets",
          "events:ListTagsForResource",
-         "events:ListTargetsByRule"
+         "events:ListTargetsByRule",
+         "events:TagResource",
+         "events:UntagResource"
       ],
       "Resource":[
         "arn:aws:events:${region}:${account_id}:rule/Monday-schedule-${env}",
@@ -121,19 +183,36 @@
         {
       "Effect":"Allow",
       "Action":[
-         "logs:ListTagsForResource"
+         "logs:CreateLogGroup",
+         "logs:DeleteLogGroup",
+         "logs:PutRetentionPolicy",
+         "logs:DeleteRetentionPolicy",
+         "logs:ListTagsForResource",
+         "logs:TagResource",
+         "logs:UntagResource",
+         "logs:TagLogGroup",
+         "logs:UntagLogGroup"
       ],
       "Resource":[
         "arn:aws:logs:${region}:${account_id}:log-group:/aws/lambda/aws_list-lambda-${env}",
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/lambda/aws_list-lambda-${env}:*",
         "arn:aws:logs:${region}:${account_id}:log-group:/aws/lambda/aws_verify-takeover-${env}",
-        "arn:aws:logs:${region}:${account_id}:log-group:/aws/lambda/azure-lambda-${env}"
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/lambda/aws_verify-takeover-${env}:*",
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/lambda/azure-lambda-${env}",
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/lambda/azure-lambda-${env}:*"
       ]
     },
     {
       "Effect":"Allow",
       "Action":[
-         "sqs:getqueueattributes",
-         "sqs:listqueuetags"
+         "sqs:GetQueueAttributes",
+         "sqs:SetQueueAttributes",
+         "sqs:CreateQueue",
+         "sqs:DeleteQueue",
+         "sqs:GetQueueUrl",
+         "sqs:ListQueueTags",
+         "sqs:TagQueue",
+         "sqs:UntagQueue"
       ],
       "Resource":[
         "arn:aws:sqs:${region}:${account_id}:account-ids-${env}-deadletter-queue",
